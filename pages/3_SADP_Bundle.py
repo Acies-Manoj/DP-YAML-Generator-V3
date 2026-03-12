@@ -3,11 +3,13 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils.generators import generate_sadp_bundle_yaml
+from utils.history import save_entry
 from utils.examples import EXAMPLE_BUNDLE, show_example
 
 st.set_page_config(page_title="SADP — Bundle", layout="wide")
-from utils.ui_utils import load_global_css, floating_docs
+from utils.ui_utils import load_global_css, render_sidebar, floating_docs
 load_global_css()
+render_sidebar()
 floating_docs("bundle")
 
 st.markdown("""
@@ -181,6 +183,7 @@ if not st.session_state.sadp_bundle_preview_mode:
                 "layer":        b_layer.strip() or "user",
                 "qc_resources": qc_list,
             })
+            save_entry("SADP", "bundle", f"{b_name.strip()}.yml", st.session_state.sadp_generated_bundle, dp_name=b_name.strip())
             st.session_state.sadp_bundle_preview_mode = True
             st.rerun()
 

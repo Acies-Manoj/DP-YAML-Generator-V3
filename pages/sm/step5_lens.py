@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.generators import generate_lens_yaml
+from utils.history import save_entry
 from utils.examples import EXAMPLE_LENS, show_example
 from utils.ui_utils import inline_docs_banner
 
@@ -165,6 +166,7 @@ def render_step5():
                     "metric": {"logLevel": b_met_ll},
                 }
                 st.session_state.bundle_generated_lens_yaml = generate_lens_yaml(lens_data)
+                save_entry("CADP", "lens", f"{b_lens_name.strip()}.yml", st.session_state.bundle_generated_lens_yaml, dp_name=b_lens_name.strip())
                 st.session_state.bundle_lens_name           = b_lens_name.strip()
                 st.session_state.bundle_lens_desc_saved     = b_lens_desc.strip()
                 st.session_state.bundle_lens_src_name       = b_src_name.strip()

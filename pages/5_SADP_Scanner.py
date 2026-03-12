@@ -1,13 +1,14 @@
 import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
+from utils.history import save_entry
 from utils.generators import generate_dp_scanner_yaml
 from utils.examples import EXAMPLE_DP_SCANNER, show_example
 
 st.set_page_config(page_title="SADP — Scanner", layout="wide")
-from utils.ui_utils import load_global_css, floating_docs
+from utils.ui_utils import load_global_css, render_sidebar, floating_docs
 load_global_css()
+render_sidebar()
 floating_docs("scanner")
 
 st.markdown("""
@@ -192,6 +193,7 @@ if step == 1:
                     "mark_deleted":    sc_mark_deleted,
                     "data_products":   [dp for dp in st.session_state.sadp_scanner_data_products if dp.strip()],
                 })
+                save_entry("SADP", "scanner", f"{sc_name.strip()}.yml", st.session_state.sadp_generated_scanner, dp_name=sc_name.strip())
                 st.session_state.sadp_scanner_preview_mode = True
                 st.rerun()
 

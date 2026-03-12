@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.generators import generate_user_groups_yaml
+from utils.history import save_entry
 from utils.ui_utils import inline_docs_banner
 
 _UG_SCOPES = ["meta", "data", "graphql", "jobs", "source"]
@@ -105,6 +106,7 @@ def render_ind_user_groups():
 
         if st.session_state.pop("ind_ug_preview_clicked", False):
             st.session_state.ind_ug_yaml    = generate_user_groups_yaml(st.session_state.ind_ug_groups)
+            save_entry("Specific", "user_groups", "user_groups.yaml", st.session_state.ind_ug_yaml)
             st.session_state.ind_ug_preview = True
             st.rerun()
 

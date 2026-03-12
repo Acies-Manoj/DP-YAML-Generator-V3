@@ -1,13 +1,14 @@
 import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
+from utils.history import save_entry
 from utils.generators import generate_sadp_spec_yaml
 from utils.examples import EXAMPLE_SPEC, show_example
 
 st.set_page_config(page_title="SADP — Spec", layout="wide")
-from utils.ui_utils import load_global_css, floating_docs
+from utils.ui_utils import load_global_css, render_sidebar, floating_docs
 load_global_css()
+render_sidebar()
 floating_docs("spec")
 
 st.markdown("""
@@ -236,6 +237,7 @@ if not st.session_state.sadp_spec_preview_mode:
                 "inputs":          st.session_state.sadp_spec_inputs,
                 "outputs":         st.session_state.sadp_spec_outputs,
             })
+            save_entry("SADP", "spec", f"{s_name.strip()}.yml", st.session_state.sadp_generated_spec, dp_name=s_name.strip())
             st.session_state.sadp_scanner_data_products = [s_name.strip()]
             st.session_state.sadp_spec_preview_mode = True
             st.rerun()

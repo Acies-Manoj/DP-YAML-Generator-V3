@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.generators import generate_repo_cred_yaml
+from utils.history import save_entry
 
 _GIT_TYPES = ["github", "bitbucket", "gitlab", "azure-devops"]
 
@@ -116,6 +117,7 @@ def render_ind_repo_cred():
                     "git_password": b_rc_password.strip(),
                 }
                 st.session_state.ind_rc_yaml    = generate_repo_cred_yaml(cred_data)
+                save_entry("Specific", "repo_cred", f"{b_rc_name.strip()}.yaml", st.session_state.ind_rc_yaml)
                 st.session_state.ind_rc_name    = b_rc_name.strip()
                 st.session_state.ind_rc_desc    = b_rc_desc.strip()
                 st.session_state.ind_rc_owner   = b_rc_owner.strip()

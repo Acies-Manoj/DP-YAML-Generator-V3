@@ -17,71 +17,27 @@ def _clear_nav_state():
 
 
 def render_sidebar():
-    """Render the branded sidebar — logo, back to home, quick jump links."""
+    """Render the persistent sidebar with title, Home and History navigation."""
     with st.sidebar:
-
-        # ── Logo / app name ────────────────────────────────────────────────
         st.markdown(
-            '<div class="sb-header">'
-            '<div class="sb-logo">DP YAML<br>Generator</div>'
-            '<div class="sb-tagline">DataOS · Internal Tool</div>'
+            '<div style="padding:16px 8px 8px 8px;">'
+            '<p style="font-size:16px;font-weight:700;color:#f3f4f6;margin:0;letter-spacing:-0.01em;">'
+            '⚙️ DP YAML Generator</p>'
+            '<p style="font-size:11px;color:#6b7280;margin:4px 0 0 0;">YAML & SQL file builder</p>'
             '</div>',
             unsafe_allow_html=True,
         )
-
-        st.markdown('<hr class="sb-divider">', unsafe_allow_html=True)
-
-        # ── Back to Home ───────────────────────────────────────────────────
-        if st.button("⬅ Back to Home", key="_sb_home", use_container_width=True):
+        st.markdown(
+            '<div style="border-top:1px solid #1f2937;margin:8px 0 12px 0;"></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("🏠  Home", key="sb_home", use_container_width=True):
             _clear_nav_state()
-            st.session_state["home_screen"] = "home"
             st.switch_page("app.py")
-
-        st.markdown('<hr class="sb-divider">', unsafe_allow_html=True)
-
-        # ── Quick Jump ─────────────────────────────────────────────────────
-        st.markdown(
-            '<div class="sb-context-label" style="padding: 0 18px 8px 18px;">QUICK JUMP</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Each entry: (label, emoji, page, session_state_overrides)
-        quick_links = [
-            ("SQL File",        "🗄️", "pages/1_CADP.py",                 {"sm_origin": "specific", "sm_mode": "individual", "semantic_section": "sql"}),
-            ("Table YAML",      "📄", "pages/1_CADP.py",                 {"sm_origin": "specific", "sm_mode": "individual", "semantic_section": "table"}),
-            ("View YAML",       "📄", "pages/1_CADP.py",                 {"sm_origin": "specific", "sm_mode": "individual", "semantic_section": "view"}),
-            ("Lens Deployment", "🔭", "pages/1_CADP.py",                 {"sm_origin": "specific", "sm_mode": "individual", "semantic_section": "lens"}),
-            ("Flare Job",       "⚡", "pages/8_CADP_Flare.py",           {"flare_origin": "specific"}),
-            ("Depot",           "🏗️", "pages/6_Depot.py",               {"depot_origin": "specific", "depot_specific_file": "depot"}),
-            ("Bundle",          "📦", "pages/9_CADP_DP_Deployment.py",   {"dp_origin": "specific", "dp_step": 1, "dp_entry_step": 1}),
-            ("DP Scanner",      "🔍", "pages/9_CADP_DP_Deployment.py",   {"dp_origin": "specific", "dp_step": 3, "dp_entry_step": 3}),
-            ("Quality Checks",  "✅", "pages/1_CADP.py",                 {"sm_origin": "specific", "sm_mode": "individual", "semantic_section": "qc"}),
-        ]
-
-        for label, icon, page, state_overrides in quick_links:
-            st.markdown(
-                f'<div class="sb-quick-item">'
-                f'<span class="sb-quick-icon">{icon}</span>'
-                f'<span class="sb-quick-label">{label}</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            if st.button(label, key=f"_sb_qj_{label}", use_container_width=True):
-                _clear_nav_state()
-                for k, v in state_overrides.items():
-                    st.session_state[k] = v
-                st.session_state["home_screen"] = "specific"
-                st.switch_page(page)
-
-        # ── Footer ─────────────────────────────────────────────────────────
-        st.markdown(
-            '<div class="sb-footer">⚙️ YAML & SQL Generation</div>',
-            unsafe_allow_html=True,
-        )
-
-
+        if st.button("🕓  History", key="sb_history", use_container_width=True):
+            st.switch_page("pages/10_History.py")
 def load_global_css():
-    """Inject the global CSS design system and render the branded sidebar."""
+    """Inject the global CSS design system."""
     css_path = os.path.join(os.path.dirname(__file__), "..", "assets", "style.css")
     try:
         with open(css_path, "r", encoding="utf-8") as f:
@@ -89,7 +45,13 @@ def load_global_css():
     except FileNotFoundError:
         pass
 
-    render_sidebar()
+    # Hide Streamlit's auto-generated page navigation list only
+    st.markdown("""
+        <style>
+            [data-testid="stSidebarNav"] { display: none !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
 
 
 def section_header(icon: str, title: str):
@@ -122,6 +84,8 @@ def app_footer():
         '<div class="app-footer">⚙️ &nbsp; Internal Automation Tool — YAML & SQL Generation</div>',
         unsafe_allow_html=True,
     )
+
+
 # ── Docs URL registry ─────────────────────────────────────────────────────────
 DOCS_URLS = {
     "lens":        ("Lens Docs",        "https://dataos.info/resources/lens/"),
@@ -138,7 +102,11 @@ DOCS_URLS = {
 
 
 def floating_docs(*keys: str):
-    """Floating pill button(s) fixed to bottom-right. Pass one or more DOCS_URLS keys."""
+    """Render a floating docs button (bottom-right).
+    Pass one key for a single button, multiple keys for a multi-link panel.
+    Keys must be from DOCS_URLS registry.
+    """
+    # Build CSS only once per render (idempotent — browsers deduplicate)
     css = """
 <style>
 .floating-docs {
@@ -170,7 +138,7 @@ def floating_docs(*keys: str):
 
 
 def inline_docs_banner(*keys: str):
-    """Compact inline docs link bar — use inside step wizards and sub-module renders."""
+    """Render a compact inline docs link bar (useful inside step wizards)."""
     links = " &nbsp;·&nbsp; ".join(
         f'<a href="{DOCS_URLS[k][1]}" target="_blank" '
         f'style="color:#60a5fa;font-size:12px;text-decoration:none;">📖 {DOCS_URLS[k][0]}</a>'

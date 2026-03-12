@@ -18,6 +18,7 @@ from utils.sf_utils import (
 from utils.default_checks import generate_default_checks
 from utils.llm_checks import call_llm
 from utils.qc_yaml_generator import generate_qc_yaml
+from utils.history import save_entry
 from utils.qc_config import PROVIDER, GROQ_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL
 
 import pandas as pd
@@ -595,6 +596,7 @@ def render_ind_qc():
                     )
                     st.session_state.ind_qc_last_yaml      = yaml_out
                     st.session_state.ind_qc_last_yaml_name = f"{wf_name.strip()}.yaml"
+                    save_entry("Specific", "quality_checks", f"{wf_name.strip()}.yaml", yaml_out)
                 except Exception as e:
                     st.error(f"YAML generation failed: {e}")
 

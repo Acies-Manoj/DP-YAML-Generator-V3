@@ -6,10 +6,12 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils.generators import generate_flare_yaml
+from utils.history import save_entry
 
 st.set_page_config(page_title="CADP — Flare Jobs", layout="wide")
-from utils.ui_utils import load_global_css, floating_docs
+from utils.ui_utils import load_global_css, render_sidebar, floating_docs
 load_global_css()
+render_sidebar()
 floating_docs("flare")
 
 st.markdown("""
@@ -427,6 +429,7 @@ if generate_btn:
         }
         st.session_state.flare_generated_yaml    = generate_flare_yaml(flare_data)
         st.session_state.flare_job_name_for_file = wf_name.strip()
+        save_entry("CADP", "flare", f"{wf_name.strip()}.yml", st.session_state.flare_generated_yaml, dp_name=wf_name.strip())
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PREVIEW + DOWNLOAD

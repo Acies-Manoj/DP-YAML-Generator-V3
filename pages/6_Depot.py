@@ -6,6 +6,7 @@ from utils.examples import (
     EXAMPLE_SECRET_R, EXAMPLE_SECRET_RW, EXAMPLE_DEPOT, EXAMPLE_SCANNER,
     show_example,
 )
+from utils.history import save_entry, save_zip_entry
 from utils.depot_generators import (
     generate_secret_r_yaml,
     generate_secret_rw_yaml,
@@ -14,8 +15,9 @@ from utils.depot_generators import (
 )
 
 st.set_page_config(page_title="Depot Builder", layout="wide")
-from utils.ui_utils import load_global_css, floating_docs
+from utils.ui_utils import load_global_css, render_sidebar, floating_docs
 load_global_css()
+render_sidebar()
 floating_docs("depot")
 
 st.markdown("""
@@ -186,6 +188,7 @@ if origin == "specific" and specific_file:
                     "desc_rw": "",
                 })
                 st.code(yaml_out, language="yaml")
+                save_entry("Specific", "secret_r", f"{base_name.strip()}.yml", yaml_out)
                 st.download_button("Download YAML", data=yaml_out,
                     file_name=f"{base_name.strip()}.yml", mime="text/yaml",
                     use_container_width=True)
@@ -225,6 +228,7 @@ if origin == "specific" and specific_file:
                     "desc_rw": desc.strip() or f"read-write instance-secret for {base_name.strip()} snowflake depot",
                 })
                 st.code(yaml_out, language="yaml")
+                save_entry("Specific", "secret_rw", f"{base_name.strip()}.yml", yaml_out)
                 st.download_button("Download YAML", data=yaml_out,
                     file_name=f"{base_name.strip()}.yml", mime="text/yaml",
                     use_container_width=True)
@@ -316,6 +320,7 @@ if origin == "specific" and specific_file:
                     "secret_base": secret_base.strip(),
                 })
                 st.code(yaml_out, language="yaml")
+                save_entry("Specific", "depot", f"{dep_name.strip()}-depot.yml", yaml_out)
                 st.download_button("Download YAML", data=yaml_out,
                     file_name=f"{dep_name.strip()}-depot.yml", mime="text/yaml",
                     use_container_width=True)
@@ -422,6 +427,7 @@ if origin == "specific" and specific_file:
                     "include_views":   st.session_state.get("ind_sc_inc_views", True),
                 })
                 st.code(yaml_out, language="yaml")
+                save_entry("Specific", "scanner", f"{workflow_name.strip()}.yml", yaml_out)
                 st.download_button("Download YAML", data=yaml_out,
                     file_name=f"{workflow_name.strip()}.yml", mime="text/yaml",
                     use_container_width=True)
@@ -878,7 +884,12 @@ elif step == 4:
         zf.writestr(f"{name}-depot/{name}-depot.yml",   yaml_depot)
         zf.writestr(f"{name}-depot/{name}-scanner.yml", yaml_scanner)
     zip_buf.seek(0)
-
+    save_zip_entry("Specific", "zip_depot", f"{name}-depot.zip", {
+    f"{name}-depot/{name}-r.yml":       yaml_r,
+    f"{name}-depot/{name}-rw.yml":      yaml_rw,
+    f"{name}-depot/{name}-depot.yml":   yaml_depot,
+    f"{name}-depot/{name}-scanner.yml": yaml_scanner,
+    })
     st.download_button(
         f"Download All as ZIP  ({name}-depot.zip)",
         data=zip_buf, file_name=f"{name}-depot.zip",

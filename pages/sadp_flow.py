@@ -1,17 +1,19 @@
 import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from utils.ui_utils import load_global_css, app_footer
+from utils.ui_utils import load_global_css, render_sidebar, app_footer
+from utils.history import save_zip_entry
 
 st.set_page_config(page_title="SADP — Full Data Product", layout="wide")
 load_global_css()
+render_sidebar()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STATE INIT
 # ─────────────────────────────────────────────────────────────────────────────
 STEPS = {
     1: {"label": "Depot",          "optional": False},
-    2: {"label": "Quality Checks", "optional": True},
+    2: {"label": "Quality Checks", "optional": False},
     3: {"label": "Bundle",         "optional": False},
     4: {"label": "Spec",           "optional": False},
     5: {"label": "Scanner",        "optional": False},
@@ -228,6 +230,7 @@ if mandatory_done:
                 for path, content in prefixed_files.items():
                     zf.writestr(path, content)
             zip_buf.seek(0)
+            save_zip_entry("SADP", "zip_sadp", f"{confirmed_name}.zip", prefixed_files, dp_name=confirmed_name)
 
             st.download_button(
                 label=f"⬇ Download Full SADP — {confirmed_name}.zip",

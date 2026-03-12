@@ -1,10 +1,11 @@
 import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
-from utils.ui_utils import load_global_css, group_label, app_footer, floating_docs
+from utils.ui_utils import load_global_css, render_sidebar, group_label, app_footer, floating_docs
 
 st.set_page_config(page_title="DP YAML Generator", layout="wide")
 load_global_css()
+render_sidebar()
 
 if "home_screen" not in st.session_state:
     st.session_state.home_screen = "home"
@@ -22,6 +23,12 @@ if st.session_state.home_screen == "home":
         '</p>',
         unsafe_allow_html=True,
     )
+
+    # ── Top bar with History link ─────────────────────────────────────────
+    title_col, hist_col = st.columns([5, 1])
+    with hist_col:
+        if st.button("🕓 History", key="home_history", use_container_width=True):
+            st.switch_page("pages/10_History.py")
 
     col_a, col_b = st.columns(2, gap="large")
 
@@ -50,10 +57,7 @@ if st.session_state.home_screen == "home":
             st.rerun()
 
     app_footer()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SCREEN 1 — Specific File
+    floating_docs("dp_learn")
 # ─────────────────────────────────────────────────────────────────────────────
 elif st.session_state.home_screen == "specific":
 
@@ -259,6 +263,12 @@ elif st.session_state.home_screen == "full_dp":
         unsafe_allow_html=True,
     )
 
+    # ── Top bar with History link ─────────────────────────────────────────
+    title_col, hist_col = st.columns([5, 1])
+    with hist_col:
+        if st.button("🕓 History", key="home_history", use_container_width=True):
+            st.switch_page("pages/10_History.py")
+
     col_a, col_b = st.columns(2, gap="large")
 
     with col_a:
@@ -282,4 +292,3 @@ elif st.session_state.home_screen == "full_dp":
             st.switch_page("pages/cadp_flow.py")
 
     app_footer()
-    floating_docs("dp_learn")

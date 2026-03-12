@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.generators import generate_lens_yaml
+from utils.history import save_entry
 from utils.examples import EXAMPLE_LENS, show_example
 from utils.ui_utils import inline_docs_banner
 
@@ -143,6 +144,7 @@ def render_ind_lens():
                 "metric": {"logLevel": met_loglevel},
             }
             st.session_state.generated_lens_yaml = generate_lens_yaml(lens_data)
+            save_entry("Specific", "lens", f"{lens_name.strip()}.yml", st.session_state.generated_lens_yaml)
             st.session_state.lens_name_for_file  = lens_name.strip()
 
     if "generated_lens_yaml" in st.session_state:

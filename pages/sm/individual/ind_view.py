@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.generators import generate_view_yaml
+from utils.history import save_entry
 from utils.examples import EXAMPLE_VIEW_YAML, show_example
 from utils.ui_utils import inline_docs_banner
 
@@ -110,6 +111,7 @@ def render_ind_view():
                 "tables": tables_data,
             }
             st.session_state.generated_view_yaml = generate_view_yaml(view_data)
+            save_entry("Specific", "view", f"{view_name.strip()}.yml", st.session_state.generated_view_yaml)
             st.session_state.view_name_for_file  = view_name.strip()
 
     if "generated_view_yaml" in st.session_state:

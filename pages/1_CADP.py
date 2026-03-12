@@ -1,10 +1,11 @@
 import sys, os
 import streamlit as st
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from utils.ui_utils import load_global_css
+from utils.ui_utils import load_global_css, render_sidebar
 
 st.set_page_config(layout="wide")
 load_global_css()
+render_sidebar()
 
 
 # ---------- Custom CSS ----------

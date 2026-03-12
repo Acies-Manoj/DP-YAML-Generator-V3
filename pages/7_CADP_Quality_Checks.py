@@ -15,14 +15,16 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from utils.ui_utils import load_global_css, section_header, app_footer
+from utils.ui_utils import load_global_css, render_sidebar, section_header, app_footer
 from utils.default_checks import generate_default_checks
 from utils.llm_checks import call_llm
 from utils.qc_yaml_generator import generate_qc_yaml
+from utils.history import save_entry
 from utils.qc_config import PROVIDER, GROQ_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL
 
 st.set_page_config(page_title="CADP — Quality Checks", page_icon="✅", layout="wide")
 load_global_css()
+render_sidebar()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SM type → Snowflake-style type (needed by default_checks is_string/is_timestamp)
@@ -611,6 +613,7 @@ with st.form("cadp_meta_form"):
                 st.session_state.cadp_qc_last_yaml_name = f"{wf_name.strip()}.yaml"
                 st.session_state.cadp_qc_generated_yaml = yaml_out
                 st.session_state.cadp_qc_name           = wf_name.strip()
+                save_entry("CADP", "quality_checks", f"{wf_name.strip()}.yaml", yaml_out, dp_name=wf_name.strip())
             except Exception as e:
                 st.error(f"YAML generation failed: {e}")
 

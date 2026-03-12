@@ -3,10 +3,12 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from utils.examples import EXAMPLE_BUNDLE, EXAMPLE_SPEC, EXAMPLE_DP_SCANNER, show_example
 from utils.generators import generate_bundle_yaml, generate_spec_yaml, generate_dp_scanner_yaml
+from utils.history import save_entry
 
 st.set_page_config(page_title="CADP — DP Deployment", layout="wide")
-from utils.ui_utils import load_global_css, floating_docs
+from utils.ui_utils import load_global_css, render_sidebar, floating_docs
 load_global_css()
+render_sidebar()
 floating_docs("bundle", "spec", "scanner")
 
 st.markdown("""
@@ -251,6 +253,7 @@ if step == 1:
                     "lens_workspace": b_lens_ws.strip(),
                     "qc_resources":   qc_list,
                 })
+                save_entry("CADP", "bundle", f"{b_name.strip()}.yml", st.session_state.dp_generated_bundle, dp_name=b_name.strip())
                 st.session_state.dp_preview_mode = True
                 st.rerun()
 
@@ -495,6 +498,7 @@ elif step == 2:
                     "lens_name":       s_lens_name_field.strip() or _lens_name,
                     "lens_workspace":  s_lens_ws.strip(),
                 })
+                save_entry("CADP", "spec", f"{s_name.strip()}.yml", st.session_state.dp_generated_spec, dp_name=s_name.strip())
                 st.session_state.dp_scanner_data_products = [s_name.strip()]
                 st.session_state.dp_preview_mode = True
                 st.rerun()
@@ -662,6 +666,7 @@ elif step == 3:
                     "mark_deleted":      sc_mark_deleted,
                     "data_products":     [dp for dp in st.session_state.dp_scanner_data_products if dp.strip()],
                 })
+                save_entry("CADP", "scanner", f"{sc_name.strip()}.yml", st.session_state.dp_generated_scanner, dp_name=sc_name.strip())
                 st.session_state.dp_preview_mode = True
                 st.rerun()
 

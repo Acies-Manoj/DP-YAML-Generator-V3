@@ -1,5 +1,6 @@
 import streamlit as st
 from utils.generators import generate_table_yaml
+from utils.history import save_entry
 from utils.examples import EXAMPLE_TABLE_YAML, show_example
 from utils.ui_utils import inline_docs_banner
 
@@ -145,6 +146,7 @@ def render_ind_table():
                 "measures": st.session_state.tbl_measures, "segments": segments_data,
             }
             st.session_state.generated_table_yaml = generate_table_yaml(table_data)
+            save_entry("Specific", "table", f"{tbl_name.strip()}.yml", st.session_state.generated_table_yaml)
             st.session_state.tbl_name_for_file    = tbl_name.strip()
 
     if "generated_table_yaml" in st.session_state:
