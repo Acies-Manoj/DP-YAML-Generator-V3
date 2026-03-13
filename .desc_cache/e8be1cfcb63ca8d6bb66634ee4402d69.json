@@ -1,0 +1,41 @@
+{
+  "table_description": "The BRANCH table stores information about different branches, with a composite primary key consisting of branch_id, region_code, subregion_code, and office_code. It provides details about the geographical and organizational structure of the branches.",
+  "columns": [
+    {
+      "name": "branch_id",
+      "description": "The branch_id column uniquely identifies records in the table as part of the composite primary key, likely representing a unique identifier for each branch."
+    },
+    {
+      "name": "gsscore_servicebranchnumber",
+      "description": "The gsscore_servicebranchnumber column stores a string value that may represent a service branch number, although its exact purpose is ambiguous without further context."
+    },
+    {
+      "name": "region_code",
+      "description": "The region_code column is part of the composite primary key and likely represents a code for the region where the branch is located, uniquely identifying records in the table."
+    },
+    {
+      "name": "region",
+      "description": "The region column stores a string value representing the name of the region where the branch is located, serving an analytical purpose of providing geographical context."
+    },
+    {
+      "name": "subregion_code",
+      "description": "The subregion_code column is part of the composite primary key and likely represents a code for the subregion within the region where the branch is located, uniquely identifying records in the table."
+    },
+    {
+      "name": "subregion",
+      "description": "The subregion column stores a string value representing the name of the subregion within the region where the branch is located, serving an analytical purpose of providing more detailed geographical context."
+    },
+    {
+      "name": "gbo",
+      "description": "The gbo column stores a string value, but its purpose is ambiguous without further context, potentially representing some form of organizational or geographical identifier."
+    },
+    {
+      "name": "office_code",
+      "description": "The office_code column is part of the composite primary key and likely represents a unique identifier for the office within the branch, uniquely identifying records in the table."
+    },
+    {
+      "name": "office_name",
+      "description": "The office_name column stores a string value representing the name of the office within the branch, serving an analytical purpose of providing context about the organizational structure of the branch."
+    }
+  ]
+}

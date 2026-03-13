@@ -3,6 +3,7 @@ from utils.generators import generate_table_yaml
 from sm.state import new_view
 from utils.examples import EXAMPLE_TABLE_YAML, show_example
 from utils.ui_utils import inline_docs_banner
+from utils.llm_measures import suggest_measures
 
 DIM_TYPES     = ["string", "number", "boolean", "time"]
 MEASURE_TYPES = ["number", "count", "count_distinct", "sum", "avg", "min", "max", "string"]
@@ -146,12 +147,73 @@ def render_step2():
 
         # ── MEASURES ──────────────────────────────────────────────────────
         st.divider()
-        _mh1, _mh2 = st.columns([5, 1])
+        _mh1, _mh2, _mh3 = st.columns([4, 1.4, 1])
         with _mh1:
             st.markdown("#### Measures")
         with _mh2:
-            if st.button("➕ Add", key=f"b_add_meas_{tidx}"):
+            _suggest_key = f"b_suggest_meas_{tidx}"
+            if st.button("✨ Suggest", key=_suggest_key, use_container_width=True,
+                         help="Use AI to suggest measures based on your table columns"):
+                with st.spinner("Thinking…"):
+                    try:
+                        _suggestions = suggest_measures(
+                            table_name  = t["name"],
+                            dimensions  = t["dims"],
+                            table_desc  = t.get("tbl_desc", ""),
+                        )
+                        st.session_state[f"b_meas_suggestions_{tidx}"] = _suggestions
+                    except Exception as _e:
+                        st.session_state[f"b_meas_suggestions_{tidx}"] = []
+                        st.error(f"Suggestion failed: {_e}")
+                st.rerun()
+        with _mh3:
+            if st.button("➕ Add", key=f"b_add_meas_{tidx}", use_container_width=True):
                 tables[tidx]["measures"].append({"name": "", "sql": "", "type": "number", "description": ""}); st.rerun()
+
+        # ── AI Measure Suggestion Cards ────────────────────────────────────
+        _suggestions = st.session_state.get(f"b_meas_suggestions_{tidx}", [])
+        if _suggestions:
+            st.markdown(
+                "<div style='background:#0f2237;border:1px solid #1e40af;"
+                "border-radius:10px;padding:14px 16px 10px 16px;margin-bottom:12px;'>"
+                "<p style='color:#93c5fd;font-weight:700;font-size:13px;margin:0 0 10px 0;'>"
+                "✨ AI Suggestions — click Accept to add, or Dismiss to remove</p>",
+                unsafe_allow_html=True,
+            )
+            _to_remove = []
+            for _si, _sug in enumerate(_suggestions):
+                _sc1, _sc2, _sc3, _sc4 = st.columns([2.5, 3.5, 2.5, 1.2])
+                with _sc1:
+                    st.markdown(f"**`{_sug['name']}`**")
+                    st.caption(f"Type: `{_sug['type']}`")
+                with _sc2:
+                    st.code(_sug["sql"], language=None)
+                with _sc3:
+                    st.caption(_sug.get("description", ""))
+                with _sc4:
+                    _acc_col, _dis_col = st.columns(2)
+                    with _acc_col:
+                        if st.button("✅", key=f"b_sug_acc_{tidx}_{_si}",
+                                     help="Accept this measure", use_container_width=True):
+                            tables[tidx]["measures"].append({
+                                "name":        _sug["name"],
+                                "sql":         _sug["sql"],
+                                "type":        _sug["type"],
+                                "description": _sug.get("description", ""),
+                                "_agg_func":   "Custom",
+                                "_agg_dim":    "",
+                            })
+                            _to_remove.append(_si)
+                    with _dis_col:
+                        if st.button("✕", key=f"b_sug_dis_{tidx}_{_si}",
+                                     help="Dismiss", use_container_width=True):
+                            _to_remove.append(_si)
+                st.markdown("<hr style='border-color:#1e3a5f;margin:6px 0;'>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            if _to_remove:
+                _new_sug = [s for i, s in enumerate(_suggestions) if i not in _to_remove]
+                st.session_state[f"b_meas_suggestions_{tidx}"] = _new_sug
+                st.rerun()
 
         if t["measures"]:
             _dim_names   = [d["name"] for d in t["dims"] if d.get("name")]
@@ -369,4 +431,3 @@ def render_step2():
                         st.session_state.bundle_views = [new_view()]
                     st.session_state.bundle_step = 3
                     st.rerun()
-
