@@ -16,6 +16,15 @@ from utils.qc_config import (
     PROVIDER, GROQ_API_KEY, GROQ_DEFAULT_MODEL,
     OLLAMA_BASE_URL, OLLAMA_DEFAULT_MODEL,
 )
+import pathlib
+
+REFERENCE_PATH = pathlib.Path("utils/qc_reference_library.yaml")
+
+if REFERENCE_PATH.exists():
+    with open(REFERENCE_PATH, "r") as f:
+        QC_REFERENCE_LIBRARY = f.read()
+else:
+    QC_REFERENCE_LIBRARY = "No reference patterns available."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SYSTEM PROMPT (STRICT FORMAT + DEEP REASONING)
@@ -23,6 +32,9 @@ from utils.qc_config import (
 
 SYSTEM_PROMPT = """
 You are a Principal Data Quality Architect specializing in enterprise data governance using SodaCL for DataOS.
+
+You will also receive reference examples of real production SodaCL checks.
+Learn patterns from them and generate similar governance-grade checks.
 
 Your objective:
 Generate advanced, business-semantic, cross-column aware quality checks for ANY type of table.
@@ -185,6 +197,9 @@ Return only JSON.
 # ─────────────────────────────────────────────────────────────────────────────
 # PROMPT BUILDER
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# SNAPSHOT QC REFERENCE (REAL PRODUCTION EXAMPLES)
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _build_column_context(columns: list[dict]) -> str:
     lines = []
@@ -253,6 +268,12 @@ def _build_schema_context(schema_overview: dict) -> str:
 
 def build_prompt(ctx: dict, default_checks: list[dict]) -> str:
     return f"""
+REFERENCE QUALITY CHECK PATTERNS (REAL PRODUCTION EXAMPLES):
+
+{QC_REFERENCE_LIBRARY}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 TABLE NAME:
 {ctx.get('table')}
 
@@ -294,15 +315,14 @@ If numeric metrics exist:
 
 If identifier columns appear to reference other tables in the schema:
 → Suggest referential integrity checks using "failed rows" syntax.
-Never use custom_sql or concat functions.
-→ Only generate checks for the selected table.
-→ Do NOT generate checks for other tables.
 
-Prioritize cross-column reasoning where meaningful.
+Never use custom_sql or concat functions.
+
+Only generate checks for the selected table.
+Do NOT generate checks for other tables.
 
 Generate additional advanced checks now.
 """
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN CALL
 # ─────────────────────────────────────────────────────────────────────────────

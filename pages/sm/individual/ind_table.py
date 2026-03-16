@@ -4,6 +4,7 @@ from utils.history import save_entry
 from utils.examples import EXAMPLE_TABLE_YAML, show_example
 from utils.ui_utils import inline_docs_banner
 from utils.llm_measures import suggest_measures
+from utils.llm_segments import suggest_segments
 
 DIM_TYPES     = ["string", "number", "boolean", "time"]
 MEASURE_TYPES = ["number", "count", "count_distinct", "sum", "avg", "min", "max", "string"]
@@ -25,7 +26,7 @@ def render_ind_table():
             st.session_state[key] = default
 
 
-    btn_c1, btn_c2, btn_c3, btn_c4, btn_c5 = st.columns(5)
+    btn_c1, btn_c2, btn_c3, btn_c4, btn_c5, btn_c6 = st.columns(6)
     with btn_c1:
         if st.button("➕ Add Dimension"):
             st.session_state.tbl_dimensions.append(
@@ -54,10 +55,28 @@ def render_ind_table():
                         st.error(f"Suggestion failed: {_e}")
                 st.rerun()
     with btn_c4:
+        if st.button("✨ Suggest Segments", help="Use AI to suggest segments from your columns"):
+            _dims = st.session_state.get("tbl_dimensions", [])
+            if not any(d.get("name") or d.get("column") for d in _dims):
+                st.warning("Add at least one dimension first so the AI has columns to work with.")
+            else:
+                with st.spinner("Thinking…"):
+                    try:
+                        _seg_sug = suggest_segments(
+                            table_name = st.session_state.get("_ind_tbl_name_hint", ""),
+                            dimensions = _dims,
+                            table_desc = "",
+                        )
+                        st.session_state["ind_tbl_seg_suggestions"] = _seg_sug
+                    except Exception as _e:
+                        st.session_state["ind_tbl_seg_suggestions"] = []
+                        st.error(f"Suggestion failed: {_e}")
+                st.rerun()
+    with btn_c5:
         if st.button("➕ Add Join"):
             st.session_state.tbl_joins.append({"name": "", "relationship": "many_to_one", "sql": ""})
             st.rerun()
-    with btn_c5:
+    with btn_c6:
         if st.button("➕ Add Segment"):
             st.session_state.tbl_segments.append({"name": "", "sql": "", "description": "", "includes": "", "excludes": ""})
             st.rerun()
@@ -69,7 +88,7 @@ def render_ind_table():
             "<div style='background:#0f2237;border:1px solid #1e40af;"
             "border-radius:10px;padding:14px 16px 10px 16px;margin:10px 0 12px 0;'>"
             "<p style='color:#93c5fd;font-weight:700;font-size:13px;margin:0 0 10px 0;'>"
-            "✨ AI Suggestions — click ✅ to add to your measures list</p>",
+            "✨ Measure Suggestions — click ✅ to add to your measures list</p>",
             unsafe_allow_html=True,
         )
         _to_remove = []
@@ -101,6 +120,48 @@ def render_ind_table():
         if _to_remove:
             st.session_state["ind_tbl_meas_suggestions"] = [
                 s for i, s in enumerate(_ind_suggestions) if i not in _to_remove
+            ]
+            st.rerun()
+
+    # ── AI Segment Suggestion Cards (outside form) ─────────────────────────
+    _ind_seg_suggestions = st.session_state.get("ind_tbl_seg_suggestions", [])
+    if _ind_seg_suggestions:
+        st.markdown(
+            "<div style='background:#0f1f0f;border:1px solid #166534;"
+            "border-radius:10px;padding:14px 16px 10px 16px;margin:10px 0 12px 0;'>"
+            "<p style='color:#86efac;font-weight:700;font-size:13px;margin:0 0 10px 0;'>"
+            "✨ Segment Suggestions — click ✅ to add to your segments list</p>",
+            unsafe_allow_html=True,
+        )
+        _seg_to_remove = []
+        for _si, _sug in enumerate(_ind_seg_suggestions):
+            _sc1, _sc2, _sc3, _sc4 = st.columns([2, 3.5, 3, 1.2])
+            with _sc1:
+                st.markdown(f"**`{_sug['name']}`**")
+            with _sc2:
+                st.code(_sug["sql"], language=None)
+            with _sc3:
+                st.caption(_sug.get("description", ""))
+            with _sc4:
+                _acc_col, _dis_col = st.columns(2)
+                with _acc_col:
+                    if st.button("✅", key=f"ind_seg_acc_{_si}", help="Accept", use_container_width=True):
+                        st.session_state.tbl_segments.append({
+                            "name":        _sug["name"],
+                            "sql":         _sug["sql"],
+                            "description": _sug.get("description", ""),
+                            "includes":    "",
+                            "excludes":    "",
+                        })
+                        _seg_to_remove.append(_si)
+                with _dis_col:
+                    if st.button("✕", key=f"ind_seg_dis_{_si}", help="Dismiss", use_container_width=True):
+                        _seg_to_remove.append(_si)
+            st.markdown("<hr style='border-color:#14532d;margin:6px 0;'>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        if _seg_to_remove:
+            st.session_state["ind_tbl_seg_suggestions"] = [
+                s for i, s in enumerate(_ind_seg_suggestions) if i not in _seg_to_remove
             ]
             st.rerun()
 
@@ -228,4 +289,3 @@ def render_ind_table():
 # ─────────────────────────────────────────────────────────────────────────────
 # VIEW YAML BUILDER
 # ─────────────────────────────────────────────────────────────────────────────
-
