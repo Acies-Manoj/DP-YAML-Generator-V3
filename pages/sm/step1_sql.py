@@ -22,7 +22,7 @@ def _build_col_line(orig, alias, cast_as):
 
 
 def _render_col_grid(preview, key_prefix):
-    DIM_TYPES_INNER = ["string", "number", "boolean", "time", "date"]
+    DIM_TYPES_INNER = ["string", "number", "boolean", "time"]
     h1, h2, h3, h4, h5, h6 = st.columns([2.2, 1.6, 1.9, 1.9, 1.8, 0.6])
     h1.markdown("**Column**"); h2.markdown("**SF Type**")
     h3.markdown("**Alias**");  h4.markdown("**Cast As**")
@@ -105,7 +105,7 @@ def _render_manual(tables, tidx):
         st.markdown("---")
 
         manual_cols = tables[tidx]["manual_cols"]
-        DIM_TYPES_M = ["string", "number", "boolean", "time", "date"]
+        DIM_TYPES_M = ["string", "number", "boolean", "time"]
         for i, col in enumerate(manual_cols):
             mc1, mc2, mc3, mc4, mc5, mc6, mc7 = st.columns([2.2, 1.6, 1.9, 1.9, 1.8, 0.6, 0.5])
             with mc1:

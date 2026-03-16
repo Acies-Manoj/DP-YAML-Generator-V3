@@ -28,7 +28,7 @@ _TYPE_MAP = {
     "FLOAT8": "number", "DOUBLE": "number", "REAL": "number",
     "DECIMAL": "number", "NUMERIC": "number", "FIXED": "number",
     "BOOLEAN": "boolean",
-    "DATE": "date",
+    "DATE": "time",
     "TIMESTAMP": "time", "TIMESTAMP_NTZ": "time", "TIMESTAMP_LTZ": "time",
     "TIMESTAMP_TZ": "time", "DATETIME": "time", "TIME": "time",
 }
