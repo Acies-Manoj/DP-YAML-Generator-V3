@@ -30,7 +30,7 @@ if st.session_state.home_screen == "home":
         if st.button("🕓 History", key="home_history", use_container_width=True):
             st.switch_page("pages/10_History.py")
 
-    col_a, col_b = st.columns(2, gap="large")
+    col_a, col_b, col_c = st.columns(3, gap="large")
 
     with col_a:
         st.markdown("""
@@ -55,6 +55,17 @@ if st.session_state.home_screen == "home":
         if st.button("Start Full Flow →", key="home_full", use_container_width=True):
             st.session_state.home_screen = "full_dp"
             st.rerun()
+
+    with col_c:
+        st.markdown("""
+        <div class="choice-card accent-purple">
+            <h3>Edit Existing Data Product</h3>
+            <p>Upload a zipped DP folder, edit any file in the browser,
+            and download only what changed.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Open Editor →", key="home_edit", use_container_width=True):
+            st.switch_page("pages/11_Edit_DP.py")
 
     app_footer()
     floating_docs("dp_learn")
@@ -266,7 +277,7 @@ elif st.session_state.home_screen == "full_dp":
     # ── Top bar with History link ─────────────────────────────────────────
     title_col, hist_col = st.columns([5, 1])
     with hist_col:
-        if st.button("🕓 History", key="home_history", use_container_width=True):
+        if st.button("🕓 History", key="full_dp_history", use_container_width=True):
             st.switch_page("pages/10_History.py")
 
     col_a, col_b = st.columns(2, gap="large")

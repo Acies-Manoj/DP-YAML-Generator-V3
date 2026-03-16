@@ -1,6 +1,9 @@
 # Core app framework
 streamlit
 
+# In-browser code editor (Edit DP page)
+streamlit-ace
+
 # Snowflake connectivity
 snowflake-connector-python
 
