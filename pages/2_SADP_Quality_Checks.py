@@ -11,10 +11,9 @@ import json
 import sys, os
 import pandas as pd
 
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from utils.ui_utils import load_global_css, render_sidebar, section_header, app_footer
+from utils.ui_utils import load_global_css, section_header, app_footer
 from utils.sf_utils import (
     connect, fetch_databases, fetch_schemas,
     fetch_tables, fetch_full_context, fetch_schema_overview,
@@ -22,12 +21,10 @@ from utils.sf_utils import (
 from utils.default_checks import generate_default_checks
 from utils.llm_checks import call_llm
 from utils.qc_yaml_generator import generate_qc_yaml
-from utils.history import save_entry
 from utils.qc_config import PROVIDER, GROQ_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL
 
 st.set_page_config(page_title="SADP — Quality Checks", page_icon="✅", layout="wide")
 load_global_css()
-render_sidebar()
 
 CATEGORIES = [
     ("Schema",       "🔷", "#1e3a5f", "#93c5fd"),
@@ -558,7 +555,6 @@ with st.form("sadp_meta_form"):
                 st.session_state.sadp_qc_last_yaml_name = f"{wf_name.strip()}.yaml"
                 st.session_state.sadp_qc_generated_yaml = yaml_out
                 st.session_state.sadp_qc_name           = wf_name.strip()
-                save_entry("SADP", "quality_checks", f"{wf_name.strip()}.yaml", yaml_out, dp_name=wf_name.strip())
             except Exception as e:
                 st.error(f"YAML generation failed: {e}")
 

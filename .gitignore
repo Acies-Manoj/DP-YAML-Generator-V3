@@ -1,3 +1,5 @@
 .env
 history.db
 utils/__pycache__/
+pages/sm/__pycache__/
+pages/sm/individual/__pycache__/

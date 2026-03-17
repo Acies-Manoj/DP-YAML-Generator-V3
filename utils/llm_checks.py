@@ -11,7 +11,6 @@ Supports:
 
 import json
 import re
-
 from utils.qc_config import (
     PROVIDER, GROQ_API_KEY, GROQ_DEFAULT_MODEL,
     OLLAMA_BASE_URL, OLLAMA_DEFAULT_MODEL,
@@ -19,12 +18,49 @@ from utils.qc_config import (
 import pathlib
 
 REFERENCE_PATH = pathlib.Path("utils/qc_reference_library.yaml")
+LEARNED_PATH = pathlib.Path("utils/qc_learning/reference_qc_rules.json")
 
+library_text = ""
+
+# curated examples
 if REFERENCE_PATH.exists():
     with open(REFERENCE_PATH, "r") as f:
-        QC_REFERENCE_LIBRARY = f.read()
-else:
-    QC_REFERENCE_LIBRARY = "No reference patterns available."
+        library_text += f.read()
+
+# learned rules
+# learned rules
+if LEARNED_PATH.exists():
+
+    try:
+        with open(LEARNED_PATH, "r") as f:
+            learned = json.load(f)
+    except Exception:
+        learned = []
+
+    if learned:
+
+        library_text += "\n\nLEARNED QC RULES FROM USER FEEDBACK:\n"
+
+        seen = set()
+
+        for r in learned[:15]:
+
+            syntax = r.get("syntax")
+
+            if syntax in seen:
+                continue
+
+            seen.add(syntax)
+
+            library_text += f"""
+Rule Example:
+------------
+Category: {r.get('category')}
+Column: {r.get('column')}
+Syntax: {syntax}
+Reason: {r.get('reason')}
+"""
+QC_REFERENCE_LIBRARY = library_text
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SYSTEM PROMPT (STRICT FORMAT + DEEP REASONING)
@@ -36,16 +72,29 @@ You are a Principal Data Quality Architect specializing in enterprise data gover
 You will also receive reference examples of real production SodaCL checks.
 Learn patterns from them and generate similar governance-grade checks.
 
-Your objective:
-Generate advanced, business-semantic, cross-column aware quality checks for ANY type of table.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEARNED QC RULES REFERENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-You must infer domain meaning from:
+You may also receive previously learned quality rules collected from user feedback.
 
-• Column names
-• Column descriptions
-• Table description
-• Profiling statistics
-• Data patterns
+These rules represent real-world governance patterns discovered from
+manual QC improvements made by data engineers.
+
+Use them as guidance when generating new checks.
+
+• Do NOT repeat the same rule verbatim.
+• Instead infer the pattern behind the rule.
+• Apply similar logic to relevant columns in the current table.
+
+Example patterns you may observe:
+• Identifier columns require strict uniqueness
+• Status columns require allowed categorical values
+• Numeric metrics require non-negative validation
+• Temporal fields require freshness validation
+• Code fields require regex or length validation
+
+Treat these examples as governance best practices.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INTELLIGENT SEMANTIC REASONING
@@ -337,6 +386,8 @@ def call_llm(ctx: dict, default_checks: list[dict]) -> list[dict]:
         suggestions = _call_ollama(prompt)
     if suggestions is None:
         suggestions = []
+    
+    
 
     # -------------------------------------------------
     # Add rule-based suggestions (email / phone / pin)
