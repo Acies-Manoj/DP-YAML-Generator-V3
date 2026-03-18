@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   DP YAML Generator — Global Design System
+   DP YAML Generator — Global Design System (Light Theme)
    ═══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -21,16 +21,16 @@ html, body, [class*="css"] {
 }
 .stButton>button:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
 
 /* ── Choice Cards (Home screen) ───────────────────────────────── */
 .choice-card {
     padding: 28px 24px;
     border-radius: 12px;
-    background-color: #111827;
-    border: 1px solid #1f2937;
-    color: white;
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
+    color: #111827;
     min-height: 180px;
     display: flex;
     flex-direction: column;
@@ -38,7 +38,7 @@ html, body, [class*="css"] {
     margin-bottom: 10px;
 }
 .choice-card .card-icon { font-size: 26px; margin-bottom: 12px; }
-.choice-card h3 { margin-bottom: 8px; font-size: 17px; font-weight: 600; color: #f3f4f6; }
+.choice-card h3 { margin-bottom: 8px; font-size: 17px; font-weight: 600; color: #111827; }
 .choice-card p  { font-size: 13px; color: #6b7280; line-height: 1.6; margin: 0; }
 .choice-card.accent-blue   { border-left: 3px solid #3b82f6; }
 .choice-card.accent-green  { border-left: 3px solid #10b981; }
@@ -49,21 +49,21 @@ html, body, [class*="css"] {
 .flow-card {
     padding: 16px 18px;
     border-radius: 10px;
-    background-color: #111827;
-    border: 1px solid #1f2937;
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
     border-left-width: 3px;
-    color: white;
+    color: #111827;
     min-height: 88px;
     margin-bottom: 10px;
 }
-.flow-card h4 { margin: 0 0 5px 0; font-size: 13px; font-weight: 600; color: #e5e7eb; }
+.flow-card h4 { margin: 0 0 5px 0; font-size: 13px; font-weight: 600; color: #111827; }
 .flow-card p  { font-size: 12px; color: #6b7280; margin: 0; line-height: 1.5; }
 .flow-card.teal   { border-left-color: #14b8a6; }
 .flow-card.orange { border-left-color: #f97316; }
 .flow-card.blue   { border-left-color: #3b82f6; }
 .flow-card.purple { border-left-color: #8b5cf6; }
 .flow-card.green  { border-left-color: #10b981; }
-.flow-card.muted  { border-left-color: #374151; opacity: 0.45; }
+.flow-card.muted  { border-left-color: #9ca3af; opacity: 0.55; }
 
 /* ── Group Labels ─────────────────────────────────────────────── */
 .group-label {
@@ -72,12 +72,12 @@ html, body, [class*="css"] {
     gap: 8px;
     font-size: 11px;
     font-weight: 700;
-    color: #4b5563;
+    color: #6b7280;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin: 24px 0 10px 0;
     padding-bottom: 8px;
-    border-bottom: 1px solid #1f2937;
+    border-bottom: 1px solid #e5e7eb;
 }
 .group-label .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .dot-teal   { background: #14b8a6; }
@@ -87,13 +87,13 @@ html, body, [class*="css"] {
 .dot-green  { background: #10b981; }
 
 /* ── Step Cards (Flow pages) ──────────────────────────────────── */
-.step-card { padding: 18px 20px; border-radius: 10px; margin-bottom: 4px; border: 1px solid #1f2937; }
-.step-card.complete { background-color: #052e16; border-color: #059669; }
-.step-card.current  { background-color: #0f2544; border-color: #3b82f6; }
-.step-card.pending  { background-color: #111827; border-color: #1f2937; }
-.step-card.locked   { background-color: #0d1117; border-color: #1f2937; opacity: 0.45; }
-.step-card.skipped  { background-color: #1c1008; border-color: #78350f; }
-.step-card h4 { margin: 0 0 3px 0; font-size: 14px; font-weight: 600; color: #e5e7eb; }
+.step-card { padding: 18px 20px; border-radius: 10px; margin-bottom: 4px; border: 1px solid #e5e7eb; }
+.step-card.complete { background-color: #f0fdf4; border-color: #86efac; }
+.step-card.current  { background-color: #eff6ff; border-color: #93c5fd; }
+.step-card.pending  { background-color: #f9fafb; border-color: #e5e7eb; }
+.step-card.locked   { background-color: #f9fafb; border-color: #e5e7eb; opacity: 0.5; }
+.step-card.skipped  { background-color: #fffbeb; border-color: #fcd34d; }
+.step-card h4 { margin: 0 0 3px 0; font-size: 14px; font-weight: 600; color: #111827; }
 .step-card p  { margin: 0; font-size: 12px; color: #6b7280; }
 
 .step-num {
@@ -103,9 +103,9 @@ html, body, [class*="css"] {
 }
 .step-num.complete { background: #059669; color: white; }
 .step-num.current  { background: #3b82f6; color: white; }
-.step-num.pending  { background: #374151; color: #9ca3af; }
-.step-num.locked   { background: #1f2937; color: #4b5563; }
-.step-num.skipped  { background: #78350f; color: #fcd34d; }
+.step-num.pending  { background: #e5e7eb; color: #6b7280; }
+.step-num.locked   { background: #f3f4f6; color: #9ca3af; }
+.step-num.skipped  { background: #fef3c7; color: #d97706; }
 
 .step-badge {
     display: inline-block; font-size: 10px; font-weight: 600;
@@ -113,37 +113,37 @@ html, body, [class*="css"] {
 }
 .b-complete { background: #059669; color: white; }
 .b-current  { background: #3b82f6; color: white; }
-.b-pending  { background: #374151; color: #9ca3af; }
-.b-locked   { background: #1f2937; color: #4b5563; }
-.b-skipped  { background: #78350f; color: #fcd34d; }
-.b-optional { background: #1f2937; color: #6b7280; border: 1px solid #374151; }
+.b-pending  { background: #e5e7eb; color: #6b7280; }
+.b-locked   { background: #f3f4f6; color: #9ca3af; }
+.b-skipped  { background: #fef3c7; color: #d97706; }
+.b-optional { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
 
-/* ── Section Headers (Form pages) ────────────────────────────── */
+/* ── Section Headers ──────────────────────────────────────────── */
 .section-header {
     display: flex; align-items: center; gap: 10px;
     margin: 20px 0 12px 0; padding-left: 12px; border-left: 3px solid #3b82f6;
 }
-.section-header h4 { font-size: 14px; font-weight: 600; color: #d1d5db; margin: 0; }
+.section-header h4 { font-size: 14px; font-weight: 600; color: #111827; margin: 0; }
 
 /* ── Info Pill ────────────────────────────────────────────────── */
 .info-pill {
-    display: inline-block; background-color: #1f2937; color: #9ca3af;
+    display: inline-block; background-color: #f3f4f6; color: #374151;
     padding: 3px 10px; border-radius: 20px; font-size: 12px;
-    margin: 2px 4px 2px 0; border: 1px solid #374151;
+    margin: 2px 4px 2px 0; border: 1px solid #e5e7eb;
 }
 
 /* ── App Footer ───────────────────────────────────────────────── */
 .app-footer {
-    margin-top: 32px; padding-top: 16px; border-top: 1px solid #1f2937;
-    font-size: 12px; color: #374151;
+    margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;
+    font-size: 12px; color: #9ca3af;
 }
 
 /* ── YAML Preview Tab ─────────────────────────────────────────── */
 .yaml-tab {
     display: flex; align-items: center; gap: 8px;
-    padding: 7px 14px; background: #1f2937;
-    border: 1px solid #374151; border-bottom: none;
+    padding: 7px 14px; background: #f3f4f6;
+    border: 1px solid #e5e7eb; border-bottom: none;
     border-radius: 8px 8px 0 0; font-size: 12px;
-    font-family: 'JetBrains Mono', monospace; color: #9ca3af;
+    font-family: 'JetBrains Mono', monospace; color: #6b7280;
 }
 .yaml-tab .yaml-dot { width: 7px; height: 7px; background: #3b82f6; border-radius: 50%; }
