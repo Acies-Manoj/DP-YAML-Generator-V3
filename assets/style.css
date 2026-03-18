@@ -43,6 +43,7 @@ html, body, [class*="css"] {
 .choice-card.accent-blue   { border-left: 3px solid #3b82f6; }
 .choice-card.accent-green  { border-left: 3px solid #10b981; }
 .choice-card.accent-purple { border-left: 3px solid #8b5cf6; }
+.choice-card.accent-orange { border-left: 3px solid #f97316; }
 
 /* ── Flow Cards (Specific file screen) ───────────────────────── */
 .flow-card {

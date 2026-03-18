@@ -4,3 +4,4 @@ utils/__pycache__/
 pages/sm/__pycache__/
 pages/sm/individual/__pycache__/
 .desc_cache/
+sequences.json

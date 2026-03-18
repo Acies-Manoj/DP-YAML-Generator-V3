@@ -30,7 +30,7 @@ if st.session_state.home_screen == "home":
         if st.button("🕓 History", key="home_history", use_container_width=True):
             st.switch_page("pages/10_History.py")
 
-    col_a, col_b, col_c = st.columns(3, gap="large")
+    col_a, col_b = st.columns(2, gap="large")
 
     with col_a:
         st.markdown("""
@@ -56,6 +56,8 @@ if st.session_state.home_screen == "home":
             st.session_state.home_screen = "full_dp"
             st.rerun()
 
+    col_c, col_d = st.columns(2, gap="large")
+
     with col_c:
         st.markdown("""
         <div class="choice-card accent-purple">
@@ -66,6 +68,17 @@ if st.session_state.home_screen == "home":
         """, unsafe_allow_html=True)
         if st.button("Open Editor →", key="home_edit", use_container_width=True):
             st.switch_page("pages/11_Edit_DP.py")
+
+    with col_d:
+        st.markdown("""
+        <div class="choice-card accent-orange">
+            <h3>🔁 Sequence Runner</h3>
+            <p>Scan your DP folder, select changed files, build a delete/apply
+            sequence, and run it live — full CLI output streamed to the UI.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Open Sequence Runner →", key="home_seq_runner", use_container_width=True):
+            st.switch_page("pages/12_Sequence_Runner.py")
 
     app_footer()
     floating_docs("dp_learn")
