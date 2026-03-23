@@ -1,0 +1,24 @@
+# Core app framework
+streamlit
+
+# In-browser code editor (Edit DP page)
+streamlit-ace
+
+# Snowflake connectivity
+snowflake-connector-python
+
+# Excel file handling (Quality Checks Excel generation)
+openpyxl
+
+# Environment variable loading (.env file)
+python-dotenv
+
+# LLM providers (AI description generation + QC suggestions)
+groq
+requests
+
+# YAML parsing (used in qc_yaml_generator.py)
+pyyaml
+
+# Data handling (used in sf_utils, description_engine)
+pandas
