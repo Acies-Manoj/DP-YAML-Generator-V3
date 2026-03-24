@@ -31,7 +31,7 @@ GROQ_MODELS = [
 # ── Active model — change this line to switch models ─────────────────────────
 # Use "llama-3.1-8b-instant" if you hit the 70b daily token limit (100k TPD)
 # Use "llama-3.3-70b-versatile" for best quality when limit resets
-DEFAULT_GROQ_MODEL   = "llama-3.1-8b-instant"   # ← change here to switch
+DEFAULT_GROQ_MODEL   = "llama-3.3-70b-versatile"   # ← change here to switch
 GROQ_DEFAULT_MODEL   = DEFAULT_GROQ_MODEL        # alias used by llm_checks.py
 
 # ── Ollama Settings (used when PROVIDER = "ollama") ───────────────────────────

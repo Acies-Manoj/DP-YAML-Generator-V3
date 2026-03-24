@@ -1,6 +1,6 @@
+.venv/
 .env
-history.db
-utils/__pycache__/
-pages/sm/__pycache__/
-pages/sm/individual/__pycache__/
+__pycache__/
+*.pyc
 .desc_cache/
+history.db

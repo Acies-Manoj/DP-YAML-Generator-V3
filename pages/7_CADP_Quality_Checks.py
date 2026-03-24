@@ -14,6 +14,13 @@ import sys, os
 import pandas as pd
 import copy
 
+from utils.qc_learning.qc_diff_engine import detect_new_rules
+from utils.qc_learning.save_learning import save_reference_rules
+
+@st.cache_data
+def read_excel_cached(file):
+    return pd.read_excel(file)
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils.ui_utils import load_global_css, section_header, app_footer
@@ -72,21 +79,6 @@ def build_ctx_from_bundle_table(tbl: dict) -> dict:
             "sf_type": sf_type,
             "soda_type": sm_type,
             "nullable": not is_pk,
-            "is_pk": is_pk,
-            "is_fk": False,
-            "is_pk_inferred": False,
-            "char_max_len": None,
-
-            "min_val": None,
-            "max_val": None,
-            "avg_val": None,
-            "null_count": None,
-            "null_pct": None,
-            "distinct_count": None,
-
-            # simulate profiling
-            "avg_length": 10 if sm_type == "string" else None,
-                     "nullable": not is_pk,
             "is_pk": is_pk,
             "is_fk": False,
             "is_pk_inferred": False,
@@ -362,6 +354,7 @@ if not st.session_state.cadp_qc_ctx:
             }
         st.session_state.cadp_qc_default_checks    = _defs
         st.session_state.cadp_qc_accepted_defaults = {i: True for i in range(len(_defs))}
+        st.session_state["generated_qc_checks"] = copy.deepcopy(_defs)
 
 if not st.session_state.cadp_qc_ctx:
     st.stop()
@@ -484,6 +477,8 @@ if run_llm and not st.session_state.cadp_qc_llm_done:
                     "body":   json.dumps(chk.get("body"), sort_keys=True),
                 }
             st.session_state.cadp_qc_llm_suggestions  = suggs
+            generated_all = st.session_state.cadp_qc_default_checks + suggs
+            st.session_state["generated_qc_checks"] = copy.deepcopy(generated_all)
             st.session_state.cadp_qc_accepted_llm     = {i: False for i in range(len(suggs))}
             st.session_state.cadp_qc_llm_done         = True
             st.session_state.cadp_qc_llm_error        = None
@@ -616,6 +611,33 @@ if total_acc > 0:
     xls_buf = BytesIO()
     pd.DataFrame(rows).to_excel(xls_buf, index=False, engine="openpyxl")
     st.download_button("📥 Download Checks for Approval (Excel)", data=xls_buf.getvalue(), file_name="cadp_qc_checks.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+st.divider()
+section_header("🧠", "Learn from Edited QC Excel")
+
+uploaded_learning = st.file_uploader(
+    "Upload edited QC Excel to improve future QC suggestions",
+    type=["xlsx"],
+    key="cadp_learning_upload"
+)
+
+if uploaded_learning and "learning_done" not in st.session_state:
+    df_learning = read_excel_cached(uploaded_learning)
+    required_cols = {"check_name", "syntax", "body", "category", "column"}
+    if not required_cols.issubset(set(df_learning.columns)):
+        st.error("Invalid QC Excel format.")
+    else:
+        generated_checks = st.session_state.get("generated_qc_checks")
+        if not generated_checks:
+            st.warning("Generate QC checks first before uploading edited Excel.")
+        else:
+            learned_rules = detect_new_rules(generated_checks, df_learning)
+            if learned_rules:
+                count = save_reference_rules(learned_rules)
+                st.success(f"🧠 Learned {count} new QC rule(s) from your edits")
+            else:
+                st.info("No new rules detected")
+        st.session_state["learning_done"] = True
 
 if st.button("➕ Add Manual Check", use_container_width=True):
     st.session_state.cadp_qc_show_manual_form = True
