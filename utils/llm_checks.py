@@ -188,6 +188,11 @@ Use "warn" for:
 QUALITY REQUIREMENTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Prefer checks using missing_count, duplicate_count, invalid_count, avg_length, and row_count.
+• For missing_percent checks: NEVER use % symbol. Always use a plain number. 
+  Example: missing_percent(col) < 5   (NOT missing_percent(col) < 5%)
+• For freshness checks: use short durations like 1d, 7d, 24h. Never use 730d or 2y.
+• Never mix metric syntax (= 0) with validity rules inline in the syntax string.
+  Validity rules (valid min, valid max, valid values, valid regex) always go in the body field.
 • For invalid_count checks with valid values: use ONLY the exact values from
   the "Samples" field shown for that column in the prompt. NEVER invent
   placeholder values like KNOWN_VALUE, UNKNOWN, N/A, ANY_VALUE, or similar.
@@ -431,7 +436,7 @@ def strengthen_check(s: dict) -> dict | None:
     elif "code" in col_lower:
         min_len = 2
 
-    # 🔴 Convert avg_length → min length + completeness
+    # 🔴 Convert avg_length → regex validity (more reliable than valid min length)
     if syntax.startswith("avg_length"):
         return {
             "col": col,
@@ -439,12 +444,19 @@ def strengthen_check(s: dict) -> dict | None:
             "name": f"{col} should have meaningful values",
             "syntax": f"invalid_count({col}) = 0",
             "body": {
-                "valid min length": min_len
+                "valid regex": f"^[A-Za-z0-9 ]{{{min_len},}}$"
             },
             "severity": "warn",
             "source": "auto_fix",
-            "reason": "Average length is weak; enforcing minimum length improves data quality"
+            "reason": "Enforcing regex-based minimum length for meaningful values"
         }
+    
+    # 🔴 Ensure invalid_count syntax is always = 0 when body has validity rules
+    body_check = s.get("body") or {}
+    if body_check and any(k in body_check for k in ["valid min", "valid max", "valid min length", "valid max length", "valid regex", "valid values"]):
+        if "invalid_count" in syntax and "= 0" not in syntax:
+            s["syntax"] = f"invalid_count({col}) = 0"
+            syntax = s["syntax"]
 
     # 🔴 Fix regex without anchors
     if "valid regex" in str(s.get("body", {})):
@@ -650,6 +662,24 @@ def call_llm(ctx: dict, default_checks: list[dict]) -> list[dict]:
         # remove corrupted syntax — LLM put conditions inline instead of in body
         if re.search(r'=\s*0\s+(and|or|\[)', syntax):
             continue
+
+        # remove missing_percent with % symbol — DataOS parser rejects it
+        if re.search(r'missing_percent\([^)]+\)\s*[<>]=?\s*\d+%', syntax):
+            # fix it by removing the % sign
+            syntax = re.sub(r'(\d+)%', r'\1', syntax)
+            s["syntax"] = syntax
+
+        # fix freshness using years — convert to days
+        if re.search(r'freshness\([^)]+\)\s*[<>]\s*\d+y', syntax):
+            syntax = re.sub(r'(\d+)y', lambda m: str(int(m.group(1)) * 365) + 'd', syntax)
+            s["syntax"] = syntax
+
+        # cap freshness at 30d maximum
+        if syntax.startswith("freshness"):
+            match = re.search(r'(\d+)d', syntax)
+            if match and int(match.group(1)) > 30:
+                syntax = re.sub(r'\d+d', '1d', syntax)
+                s["syntax"] = syntax
 
         # remove SQL expressions inside invalid_count() parentheses
         if re.search(r'invalid_count\([^)]*(<|>|!=|=|<=|>=)[^)]*\)', syntax):
