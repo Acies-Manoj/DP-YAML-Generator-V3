@@ -132,16 +132,16 @@ def generate_default_checks(ctx: dict) -> list[dict]:
             if null_pct == 0:
                 syntax = f"missing_count({col_name}) = 0"
             elif null_pct < 5:
-                syntax = f"missing_percent({col_name}) < 5%"
+                syntax = f"missing_percent({col_name}) < 5"
             else:
-                syntax = f"missing_percent({col_name}) < 10%"
+                syntax = f"missing_percent({col_name}) < 10"
         else:
             syntax = f"missing_count({col_name}) = 0"
 
         checks.append({
             "col": col_name,
             "category": "Completeness",
-            "name": f"{col_name} should not have excessive nulls",
+            "name": f"{col_name} should not be null" if "missing_count" in syntax and "= 0" in syntax else f"{col_name} should have less than acceptable missing values",
             "syntax": syntax,
             "body": None,
             "source": "default",
@@ -163,7 +163,7 @@ def generate_default_checks(ctx: dict) -> list[dict]:
                 "col": col["name"],
                 "category": "Completeness",
                 "name": f"{col['name']} should have less than 5% missing values",
-                "syntax": f"missing_percent({col['name']}) < 5%",
+                "syntax": f"missing_percent({col['name']}) < 5",
                 "body": None,
                 "source": "default",
             })
@@ -282,28 +282,28 @@ def generate_default_checks(ctx: dict) -> list[dict]:
         desc = (col.get("description") or "").lower()
         name_lower = name.lower()
 
-        # Financial fields → non-negative
-        if any(k in desc for k in ["revenue", "amount", "price", "cost"]):
-            if col.get("min_val") is not None and col["min_val"] < 0:
-                checks.append({
-                    "col": name,
-                    "category": "Validity",
-                    "name": f"{name} should not be negative",
-                    "syntax": f"invalid_count({name}) = 0",
-                    "body": {"valid min": 0},
-                    "source": "default",
-                })
-
-        # Date / time → freshness
-        if any(k in name_lower for k in ["date", "time"]) and not is_freshness_column(name):
+        # Financial fields → non-negative (valid min is body, syntax must be = 0)
+        if any(k in name_lower for k in ["revenue", "amount", "price", "cost", "income", "salary", "fee"]):
             checks.append({
                 "col": name,
-                "category": "Freshness",
-                "name": f"{name} should be recent",
-                "syntax": f"freshness({name}) < 24h",
-                "body": None,
+                "category": "Validity",
+                "name": f"{name} should be non-negative",
+                "syntax": f"invalid_count({name}) = 0",
+                "body": {"valid min": 0},
                 "source": "default",
             })
+
+        # Date / time → freshness (only for timestamp columns)
+        if any(k in name_lower for k in ["date", "time"]) and not is_freshness_column(name):
+            if is_timestamp(col["sf_type"]):
+                checks.append({
+                    "col": name,
+                    "category": "Freshness",
+                    "name": f"{name} should be recent",
+                    "syntax": f"freshness({name}) < 1d",
+                    "body": None,
+                    "source": "default",
+                })
 
         # ID → uniqueness (extra safety)
         if "id" in name_lower and not col["is_pk"]:
