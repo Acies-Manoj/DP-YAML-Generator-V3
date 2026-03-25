@@ -160,7 +160,7 @@ def _reset():
 # STAGE 1 — UPLOAD
 # ─────────────────────────────────────────────────────────────────────────────
 def _render_upload():
-    st.markdown("## 📂 Edit Existing Data Product")
+    st.markdown("## Edit Existing Data Product")
     st.markdown(
         '<p style="color:#6b7280;font-size:14px;margin-top:-8px;margin-bottom:24px;">'
         'Upload a zipped DP folder, edit files in the browser, then download your changes.'

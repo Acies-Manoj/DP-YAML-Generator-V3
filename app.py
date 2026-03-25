@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from utils.ui_utils import load_global_css, render_sidebar, group_label, app_footer, floating_docs
 
-st.set_page_config(page_title="DP YAML Generator", layout="wide")
+st.set_page_config(page_title="DP Studio", layout="wide")
 load_global_css()
 render_sidebar()
 
@@ -16,7 +16,7 @@ if "home_screen" not in st.session_state:
 # ─────────────────────────────────────────────────────────────────────────────
 if st.session_state.home_screen == "home":
 
-    st.markdown("## DP YAML Generator")
+    st.markdown("## DP Studio")
     st.markdown(
         '<p style="color:#6b7280; font-size:14px; margin-top:-8px; margin-bottom:24px;">'
         'Generate YAML & SQL files for DataOS data products — fast, consistent, error-free.'
@@ -27,7 +27,7 @@ if st.session_state.home_screen == "home":
     # ── Top bar with History link ─────────────────────────────────────────
     title_col, hist_col = st.columns([5, 1])
     with hist_col:
-        if st.button("🕓 History", key="home_history", use_container_width=True):
+        if st.button("History", key="home_history", use_container_width=True):
             st.switch_page("pages/10_History.py")
 
     col_a, col_b = st.columns(2, gap="large")
@@ -72,12 +72,12 @@ if st.session_state.home_screen == "home":
     with col_d:
         st.markdown("""
         <div class="choice-card accent-orange">
-            <h3>🔁 Sequence Runner</h3>
+            <h3>File Deployer</h3>
             <p>Scan your DP folder, select changed files, build a delete/apply
             sequence, and run it live — full CLI output streamed to the UI.</p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open Sequence Runner →", key="home_seq_runner", use_container_width=True):
+        if st.button("Open File Deployer →", key="home_seq_runner", use_container_width=True):
             st.switch_page("pages/12_Sequence_Runner.py")
 
     app_footer()
@@ -290,7 +290,7 @@ elif st.session_state.home_screen == "full_dp":
     # ── Top bar with History link ─────────────────────────────────────────
     title_col, hist_col = st.columns([5, 1])
     with hist_col:
-        if st.button("🕓 History", key="full_dp_history", use_container_width=True):
+        if st.button("History", key="full_dp_history", use_container_width=True):
             st.switch_page("pages/10_History.py")
 
     col_a, col_b = st.columns(2, gap="large")

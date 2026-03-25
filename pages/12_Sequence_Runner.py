@@ -1,5 +1,5 @@
 """
-pages/12_Sequence_Runner.py — Sequence Runner sub-application.
+pages/12_Sequence_Runner.py — File Deployer sub-application.
 
 Flow:
   Screen 1 (setup)  — Configure CTL/DP paths, scan folder, select changed files
@@ -15,7 +15,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-st.set_page_config(page_title="Sequence Runner", layout="wide")
+st.set_page_config(page_title="File Deployer", layout="wide")
 
 from utils.ui_utils       import load_global_css, render_sidebar, app_footer, section_header
 from utils.folder_scanner import scan_folder
@@ -45,24 +45,28 @@ except ImportError:
 
 # ── Session-state initialisation ──────────────────────────────────────────────
 _DEFAULTS: dict = {
-    "sr_screen":            "setup",
-    "sr_ctl_dir":           "",
-    "sr_dp_dir":            "",
-    "sr_scanned":           False,
-    "sr_all_files":         [],
-    "sr_model_files":       [],
-    "sr_selected_rels":     set(),
-    "sr_steps":             [],
-    "sr_run_results":       [],
-    "sr_execute_now":       False,
-    "sr_run_done":          False,
-    "sr_failed_at":         None,
-    "sr_selected_playbook": None,
-    "sr_confirm_delete":    None,   # name of playbook pending delete confirmation
-    "sr_rescan_warning":    None,   # warning msg when files dropped from selection on rescan
-    "sr_current_seq_name":  None,   # name of sequence being run (for history)
-    "sr_stop_on_failure":          True,   # True = stop on first failure, False = run all steps
+    "sr_screen":                "setup",
+    "sr_ctl_dir":               "",
+    "sr_dp_dir":                "",
+    "sr_scanned":               False,
+    "sr_all_files":             [],
+    "sr_selected_rels":         set(),
+    "sr_steps":                 [],
+    "sr_run_results":           [],
+    "sr_execute_now":           False,
+    "sr_run_done":              False,
+    "sr_failed_at":             None,
+    "sr_selected_playbook":     None,
+    "sr_confirm_delete":        None,   # name of playbook pending delete confirmation
+    "sr_rescan_warning":        None,   # warning msg when files dropped on rescan
+    "sr_current_seq_name":      None,   # name of sequence being run (for history)
+    "sr_stop_on_failure":       True,   # True = stop on first failure, False = run all steps
     "sr_confirm_clear_history": False,  # confirm before wiping run history
+    "sr_editing_rel_path":      None,   # rel_path of file currently open in editor
+    "sr_edit_original":         {},     # {rel_path: original_content} for this session
+    "sr_editor_content":        {},     # {rel_path: current loaded content} cache
+    "sr_editing_ctl":           False,  # whether CTL path is in edit mode
+    "sr_editing_dp":            False,  # whether DP path is in edit mode
 }
 
 for _k, _v in _DEFAULTS.items():
@@ -70,9 +74,13 @@ for _k, _v in _DEFAULTS.items():
         st.session_state[_k] = _v
 
 if not st.session_state.sr_ctl_dir:
-    st.session_state.sr_ctl_dir = _get_env("DATAOS_CTL_DIR")
+    st.session_state.sr_ctl_dir    = _get_env("DATAOS_CTL_DIR")
+    if not st.session_state.sr_ctl_dir:
+        st.session_state.sr_editing_ctl = True
 if not st.session_state.sr_dp_dir:
-    st.session_state.sr_dp_dir = _get_env("DATAOS_DP_DIR")
+    st.session_state.sr_dp_dir     = _get_env("DATAOS_DP_DIR")
+    if not st.session_state.sr_dp_dir:
+        st.session_state.sr_editing_dp = True
 
 # ── Page-level CSS ─────────────────────────────────────────────────────────────
 st.markdown("""
@@ -258,6 +266,52 @@ st.markdown("""
 }
 .run-summary.success { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
 .run-summary.failed  { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+
+/* ── Inline file editor panel ────────────────────────────────── */
+.sr-editor-panel {
+    background: #f8faff;
+    border: 1px solid #a5b4fc;
+    border-radius: 8px;
+    padding: 14px 18px 10px 18px;
+    margin: 4px 0 10px 0;
+}
+.sr-editor-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+.sr-editor-fname {
+    font-weight: 600;
+    color: #111827;
+}
+.sr-editor-path {
+    font-size: 11px;
+    color: #6b7280;
+    font-family: 'JetBrains Mono', monospace;
+    word-break: break-all;
+}
+.sr-editor-modified-badge {
+    display: inline-block;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: auto;
+}
+.sr-save-success {
+    padding: 6px 12px;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #15803d;
+    margin-top: 6px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -274,7 +328,6 @@ def _badge(action: str) -> str:
 
 
 def _label(text: str, color: str = "#6b7280", size: str = "12px", weight: str = "400") -> str:
-    """Inline styled label — use instead of st.caption() for better contrast on dark bg."""
     return f'<p style="font-size:{size};color:{color};font-weight:{weight};margin:4px 0 8px 0;">{text}</p>'
 
 
@@ -283,8 +336,8 @@ def _label(text: str, color: str = "#6b7280", size: str = "12px", weight: str = 
 # ════════════════════════════════════════════════════════════════════════════
 
 def render_setup() -> None:
-    st.markdown("## Sequence Runner")
-    st.markdown(_label("Configure paths, scan your DP folder, select changed files, then build and run."), unsafe_allow_html=True)
+    st.markdown("## File Deployer")
+    st.markdown(_label("Configure paths, scan your DP folder, select changed files, then build and deploy."), unsafe_allow_html=True)
 
     nav_l, _ = st.columns([1, 6])
     with nav_l:
@@ -302,28 +355,57 @@ def render_setup() -> None:
 
     with cfg_c1:
         st.markdown('<p style="font-size:13px;font-weight:600;color:#111827;margin-bottom:6px;">CTL Directory</p>', unsafe_allow_html=True)
-        ctl_input = st.text_input("CTL Directory", value=st.session_state.sr_ctl_dir,
-            placeholder=r"e.g.  C:\Users\Manoj\Desktop\DataOS\windows-amd64",
-            key="sr_ctl_input", label_visibility="collapsed", help="Folder containing dataos-ctl")
-        if st.button("Save CTL Path", key="sr_save_ctl", use_container_width=True):
-            st.session_state.sr_ctl_dir = ctl_input.strip()
-            _set_env("DATAOS_CTL_DIR", ctl_input.strip())
-            st.success("CTL path saved.")
-        if st.session_state.sr_ctl_dir:
-            st.markdown(f'<p style="margin-top:6px;font-size:11px;color:#6b7280;">Saved: <span class="sr-path-pill">{st.session_state.sr_ctl_dir}</span></p>', unsafe_allow_html=True)
+        if st.session_state.get("sr_editing_ctl"):
+            ctl_input = st.text_input("CTL Directory", value=st.session_state.sr_ctl_dir,
+                placeholder=r"e.g.  C:\Users\Manoj\Desktop\DataOS\windows-amd64",
+                key="sr_ctl_input", label_visibility="collapsed", help="Folder containing dataos-ctl")
+            sv_c, cn_c = st.columns(2)
+            with sv_c:
+                if st.button("Save", key="sr_save_ctl", use_container_width=True, type="primary"):
+                    st.session_state.sr_ctl_dir     = ctl_input.strip()
+                    st.session_state.sr_editing_ctl = False
+                    _set_env("DATAOS_CTL_DIR", ctl_input.strip())
+                    st.rerun()
+            with cn_c:
+                if st.button("Cancel", key="sr_cancel_ctl", use_container_width=True):
+                    st.session_state.sr_editing_ctl = False
+                    st.rerun()
+        else:
+            if st.session_state.sr_ctl_dir:
+                st.markdown(f'<div class="sr-path-pill">{st.session_state.sr_ctl_dir}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<p style="font-size:12px;color:#9ca3af;font-style:italic;">Not set</p>', unsafe_allow_html=True)
+            if st.button("Edit", key="sr_edit_ctl_btn", use_container_width=False):
+                st.session_state.sr_editing_ctl = True
+                st.rerun()
 
     with cfg_c2:
         st.markdown('<p style="font-size:13px;font-weight:600;color:#111827;margin-bottom:6px;">DP Folder Path</p>', unsafe_allow_html=True)
-        dp_input = st.text_input("DP Folder Path", value=st.session_state.sr_dp_dir,
-            placeholder=r"e.g.  C:\Users\Manoj\Desktop\my-data-product",
-            key="sr_dp_input", label_visibility="collapsed", help="Root folder of your Data Product")
-        if st.button("Save DP Path", key="sr_save_dp", use_container_width=True):
-            st.session_state.sr_dp_dir  = dp_input.strip()
-            st.session_state.sr_scanned = False
-            _set_env("DATAOS_DP_DIR", dp_input.strip())
-            st.success("DP folder path saved.")
-        if st.session_state.sr_dp_dir:
-            st.markdown(f'<p style="margin-top:6px;font-size:11px;color:#6b7280;">Saved: <span class="sr-path-pill">{st.session_state.sr_dp_dir}</span></p>', unsafe_allow_html=True)
+        if st.session_state.get("sr_editing_dp"):
+            dp_input = st.text_input("DP Folder Path", value=st.session_state.sr_dp_dir,
+                placeholder=r"e.g.  C:\Users\Manoj\Desktop\my-data-product",
+                key="sr_dp_input", label_visibility="collapsed", help="Root folder of your Data Product")
+            sv_d, cn_d = st.columns(2)
+            with sv_d:
+                if st.button("Save", key="sr_save_dp", use_container_width=True, type="primary"):
+                    st.session_state.sr_dp_dir      = dp_input.strip()
+                    st.session_state.sr_scanned     = False
+                    st.session_state.sr_editing_dp  = False
+                    _set_env("DATAOS_DP_DIR", dp_input.strip())
+                    st.rerun()
+            with cn_d:
+                if st.button("Cancel", key="sr_cancel_dp", use_container_width=True):
+                    st.session_state.sr_editing_dp = False
+                    st.rerun()
+        else:
+            if st.session_state.sr_dp_dir:
+                st.markdown(f'<div class="sr-path-pill">{st.session_state.sr_dp_dir}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<p style="font-size:12px;color:#9ca3af;font-style:italic;">Not set</p>', unsafe_allow_html=True)
+            if st.button("Edit", key="sr_edit_dp_btn", use_container_width=False):
+                st.session_state.sr_editing_dp = True
+                st.rerun()
+
 
     st.markdown(" ")
 
@@ -338,11 +420,10 @@ def render_setup() -> None:
             if not os.path.isdir(dp):
                 st.error(f"Folder not found: `{dp}`")
                 st.stop()
-            result = scan_folder(dp)
+            result    = scan_folder(dp)
             new_files = result["deployable"]
             new_rels  = {f["rel_path"] for f in new_files}
 
-            # ── Re-scan: preserve selections that still exist ─────────────────
             old_sel  = st.session_state.sr_selected_rels
             kept     = old_sel & new_rels
             dropped  = old_sel - new_rels
@@ -356,14 +437,12 @@ def render_setup() -> None:
                 st.session_state.sr_rescan_warning = None
 
             st.session_state.sr_all_files         = new_files
-            st.session_state.sr_model_files       = result["model_files"]
             st.session_state.sr_scanned           = True
             st.session_state.sr_selected_rels     = kept
             st.session_state.sr_selected_playbook = None
             st.rerun()
 
     with scan_c2:
-        # Re-scan button — only shown after first scan, keeps selections
         if st.session_state.sr_scanned:
             if st.button("Re-scan (keep selection)", key="sr_rescan_btn",
                          disabled=not dp_set, use_container_width=True):
@@ -371,7 +450,7 @@ def render_setup() -> None:
                 if not os.path.isdir(dp):
                     st.error(f"Folder not found: `{dp}`")
                     st.stop()
-                result   = scan_folder(dp)
+                result    = scan_folder(dp)
                 new_files = result["deployable"]
                 new_rels  = {f["rel_path"] for f in new_files}
                 old_sel   = st.session_state.sr_selected_rels
@@ -385,15 +464,13 @@ def render_setup() -> None:
                     )
                 else:
                     st.session_state.sr_rescan_warning = None
-                st.session_state.sr_all_files   = new_files
-                st.session_state.sr_model_files = result["model_files"]
+                st.session_state.sr_all_files     = new_files
                 st.session_state.sr_selected_rels = kept
                 st.rerun()
 
     if not dp_set:
         st.markdown(_label("Enter and save the DP Folder Path first."), unsafe_allow_html=True)
 
-    # Show rescan warning once
     if st.session_state.sr_rescan_warning:
         st.warning(st.session_state.sr_rescan_warning)
         st.session_state.sr_rescan_warning = None
@@ -402,16 +479,15 @@ def render_setup() -> None:
         app_footer()
         return
 
-    all_files   = st.session_state.sr_all_files
-    model_files = st.session_state.sr_model_files
+    all_files = st.session_state.sr_all_files
 
-    if not all_files and not model_files:
+    if not all_files:
         st.warning("No YAML files found in the folder.")
         app_footer()
         return
 
     st.markdown(" ")
-    section_header("📋", f"Files Found  ·  {len(all_files)} deployable")
+    section_header("📋", f"Files Found  ·  {len(all_files)}")
     st.markdown(_label("Check every file you changed. Folders are collapsible — use Select all to check an entire folder at once."), unsafe_allow_html=True)
 
     # ── 2-level tree ──────────────────────────────────────────────────────────
@@ -425,22 +501,14 @@ def render_setup() -> None:
 
     _TOP_COLORS = ["#3b82f6", "#10b981", "#f97316", "#8b5cf6", "#14b8a6", "#f59e0b"]
 
-    # ── Pre-compute global_idx for every file once ────────────────────────────
-    # This lets us read checkbox widget state from session state keys
-    # (which Streamlit updates BEFORE the script reruns) rather than from
-    # sr_selected_rels (which lags one run behind for the expander label).
     file_idx_map = {f["rel_path"]: all_files.index(f) for f in all_files}
 
     def _is_checked(rel_path: str) -> bool:
-        """Read actual current checkbox state from widget key."""
         idx = file_idx_map.get(rel_path)
         if idx is not None and f"sr_chk_{idx}" in st.session_state:
             return bool(st.session_state[f"sr_chk_{idx}"])
         return rel_path in st.session_state.sr_selected_rels
 
-    # Pre-initialize all checkbox keys from sr_selected_rels so Streamlit
-    # owns them from the start — this avoids the "default value + session
-    # state API" conflict when select-all writes to them directly.
     for _f in all_files:
         _k = f"sr_chk_{file_idx_map[_f['rel_path']]}"
         if _k not in st.session_state:
@@ -452,41 +520,45 @@ def render_setup() -> None:
         top_total = sum(len(v) for v in sub_map.values())
         top_files = [f for files in sub_map.values() for f in files]
         top_rels  = [f["rel_path"] for f in top_files]
-
-        # Count for select-all logic only — NOT in the expander label.
-        # Putting the count in the label causes the label string to change on
-        # every checkbox tick, which makes Streamlit treat it as a new widget
-        # and collapse the expander. Label stays stable → expander stays open.
         n_checked = sum(1 for r in top_rels if _is_checked(r))
         exp_label = f"📁  {top_folder}  —  {top_total} file{'s' if top_total != 1 else ''}"
 
         with st.expander(exp_label, expanded=False):
 
-            # ── Select all checkbox ───────────────────────────────────────────
             all_checked = (n_checked == top_total)
+
             sa_col, sa_lbl = st.columns([0.4, 10])
             with sa_col:
-                select_all = st.checkbox("", value=all_checked, key=f"sr_selall_{ti}",
+                select_all = st.checkbox("", value=all_checked,
+                                         key=f"sr_selall_{ti}",
                                          label_visibility="collapsed")
             with sa_lbl:
                 st.markdown('<p style="padding:6px 0 2px 4px;font-size:12px;font-weight:600;color:#374151;margin:0;">Select all in folder</p>', unsafe_allow_html=True)
 
-            # When select-all is toggled, explicitly set every child checkbox
-            # widget key so they immediately reflect the new state on rerun.
             if select_all and not all_checked:
+                # User clicked select-all ON — check every individual box
                 for f in top_files:
                     idx = file_idx_map[f["rel_path"]]
                     st.session_state[f"sr_chk_{idx}"] = True
                     st.session_state.sr_selected_rels.add(f["rel_path"])
                 st.rerun()
-            elif not select_all and all_checked:
-                for f in top_files:
-                    idx = file_idx_map[f["rel_path"]]
-                    st.session_state[f"sr_chk_{idx}"] = False
-                    st.session_state.sr_selected_rels.discard(f["rel_path"])
-                st.rerun()
+            elif not select_all and all_checked and f"sr_selall_{ti}" in st.session_state:
+                # Only deselect if the select-all checkbox itself was clicked OFF.
+                # Guard: the key must already exist (meaning it was rendered before),
+                # AND its current widget value (False) differs from all_checked (True).
+                # This prevents the deselect from firing when individual files are
+                # manually checked to reach all-selected state.
+                prev = st.session_state.get(f"sr_selall_prev_{ti}")
+                if prev is True:
+                    for f in top_files:
+                        idx = file_idx_map[f["rel_path"]]
+                        st.session_state[f"sr_chk_{idx}"] = False
+                        st.session_state.sr_selected_rels.discard(f["rel_path"])
+                    st.rerun()
 
-            # ── Individual file checkboxes ────────────────────────────────────
+            # Track previous state of select-all for next render
+            st.session_state[f"sr_selall_prev_{ti}"] = select_all
+
             for sub_folder in sorted(sub_map.keys()):
                 files_here = sub_map[sub_folder]
                 if sub_folder:
@@ -504,11 +576,6 @@ def render_setup() -> None:
                     global_idx = file_idx_map[f["rel_path"]]
                     chk_col, info_col = st.columns([0.4, 10])
                     with chk_col:
-                        # value= only applies on first render; after that Streamlit
-                        # uses the stored widget key. We keep sr_selected_rels in
-                        # sync here so the rest of the app can use it normally.
-                        # No value= here — session state key owns the state.
-                        # Key is pre-initialized above; select-all writes to it directly.
                         checked = st.checkbox(
                             "",
                             key=f"sr_chk_{global_idx}",
@@ -524,29 +591,6 @@ def render_setup() -> None:
                             f'<div class="sr-file-row" style="{indent}border-left:2px solid {color}66;">'
                             f'<span style="font-size:11px;color:#9ca3af;margin-right:6px;">└</span>'
                             f'<span class="sr-filename">{f["filename"]}</span>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
-    if model_files:
-        with st.expander(f"Model files ({len(model_files)}) — part of Lens, not deployed individually", expanded=False):
-            from collections import defaultdict as _dd
-            model_tree: dict = _dd(lambda: _dd(list))
-            for mf in model_files:
-                parts = mf["rel_path"].split("/")
-                top   = parts[0] if len(parts) > 1 else "."
-                sub   = "/".join(parts[1:-1]) if len(parts) > 2 else ""
-                model_tree[top][sub].append(mf)
-            for top_folder in sorted(model_tree.keys()):
-                st.markdown(f'<p style="font-size:12px;font-weight:600;color:#374151;padding:6px 4px 4px 4px;margin-top:6px;">📁 {top_folder}</p>', unsafe_allow_html=True)
-                for sub_folder, mfs in sorted(model_tree[top_folder].items()):
-                    if sub_folder:
-                        st.markdown(f'<p style="font-size:11px;color:#6b7280;padding:3px 4px 3px 12px;margin:0;">📂 {sub_folder}</p>', unsafe_allow_html=True)
-                    for mf in mfs:
-                        st.markdown(
-                            f'<div class="sr-file-row" style="opacity:0.5;margin-left:20px;border-left:2px solid #e5e7eb;">'
-                            f'<span style="font-size:11px;color:#9ca3af;margin-right:6px;">└</span>'
-                            f'<span class="sr-filename">{mf["filename"]}</span>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -572,8 +616,8 @@ def render_setup() -> None:
             missing   = [s for s in steps_in if s["rel_path"] not in rel_set]
 
             warn_pill = (
-                f'<span style="font-size:10px;color:#f59e0b;background:#2d1f00;'
-                f'border:1px solid #92400e;padding:1px 7px;border-radius:4px;margin-left:8px;">'
+                f'<span style="font-size:10px;color:#f59e0b;background:#fffbeb;'
+                f'border:1px solid #fcd34d;padding:1px 7px;border-radius:4px;margin-left:8px;">'
                 f'{len(missing)} missing</span>'
                 if missing else ""
             )
@@ -586,9 +630,7 @@ def render_setup() -> None:
                 unsafe_allow_html=True,
             )
 
-            # ── Row action buttons ─────────────────────────────────────────────
             if confirm == seq["name"]:
-                # Confirm-delete state
                 st.markdown('<div class="confirm-box">Delete this playbook permanently?</div>', unsafe_allow_html=True)
                 cd_yes, cd_no, _ = st.columns([1.2, 1, 5])
                 with cd_yes:
@@ -619,7 +661,6 @@ def render_setup() -> None:
                         st.session_state.sr_selected_playbook = None
                         st.rerun()
 
-            # ── Detail panel for active playbook ──────────────────────────────
             if is_active:
                 step_rows_html = ""
                 for idx_s, s in enumerate(steps_in):
@@ -630,8 +671,8 @@ def render_setup() -> None:
                     fname_col = "#9ca3af" if is_miss else "#111827"
                     fold_col  = "#9ca3af" if is_miss else "#6b7280"
                     miss_tag  = (
-                        '<span style="font-size:10px;color:#f59e0b;background:#2d1f00;'
-                        'border:1px solid #92400e;padding:1px 6px;border-radius:4px;'
+                        '<span style="font-size:10px;color:#d97706;background:#fffbeb;'
+                        'border:1px solid #fcd34d;padding:1px 6px;border-radius:4px;'
                         'margin-left:8px;">not found</span>'
                         if is_miss else ""
                     )
@@ -652,8 +693,8 @@ def render_setup() -> None:
                 if missing:
                     mnames = ", ".join(s["rel_path"].split("/")[-1] for s in missing)
                     warn_html = (
-                        f'<div style="margin-top:10px;padding:8px 12px;background:#1c1200;'
-                        f'border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#d97706;">'
+                        f'<div style="margin-top:10px;padding:8px 12px;background:#fffbeb;'
+                        f'border:1px solid #fcd34d;border-radius:6px;font-size:12px;color:#d97706;">'
                         f'{len(missing)} file{"s" if len(missing)>1 else ""} not found in current '
                         f'folder — steps load anyway, remove before running: {mnames}</div>'
                     )
@@ -690,6 +731,7 @@ def render_setup() -> None:
 
     # ── Continue button ───────────────────────────────────────────────────────
     n_sel = len(st.session_state.sr_selected_rels)
+
     bot_l, _, bot_r = st.columns([3, 4, 2])
     with bot_l:
         if n_sel:
@@ -697,7 +739,7 @@ def render_setup() -> None:
         else:
             st.markdown(_label("Select files manually above — or use a saved playbook."), unsafe_allow_html=True)
     with bot_r:
-        if st.button("Build Sequence →", key="sr_to_build", type="primary",
+        if st.button("Build Deployment →", key="sr_to_build", type="primary",
                      disabled=(n_sel == 0), use_container_width=True):
             st.session_state.sr_steps            = []
             st.session_state.sr_run_results      = []
@@ -714,8 +756,8 @@ def render_setup() -> None:
 # ════════════════════════════════════════════════════════════════════════════
 
 def render_build() -> None:
-    st.markdown("## Build Sequence")
-    st.markdown(_label("Click + Delete or + Apply on each file to add steps in order. Reorder and remove as needed."), unsafe_allow_html=True)
+    st.markdown("## Build Deployment")
+    st.markdown(_label("Edit any file inline, then click '＋ delete step' or '＋ apply step' to add it to the deployment sequence."), unsafe_allow_html=True)
 
     nav_l, _ = st.columns([1, 6])
     with nav_l:
@@ -733,29 +775,143 @@ def render_build() -> None:
     st.markdown(" ")
 
     for f in sel_files:
-        fc_name, fc_del, fc_apl = st.columns([6, 1.5, 1.5])
+        abs_p      = _abs_path(f["rel_path"])
+        is_editing = st.session_state.sr_editing_rel_path == f["rel_path"]
+        is_modified = f["rel_path"] in st.session_state.sr_edit_original
+
+        fc_name, fc_edit, fc_del, fc_apl = st.columns([5, 1.2, 1.5, 1.5])
         with fc_name:
+            mod_badge = ' <span style="font-size:10px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:1px 7px;border-radius:4px;font-weight:600;">modified</span>' if is_modified else ""
             st.markdown(
                 f'<div style="padding:8px 0 6px 0;">'
                 f'<span style="font-size:13px;font-weight:500;color:#111827;">{f["filename"]}</span>'
                 f'&nbsp;&nbsp;<span style="font-size:11px;color:#6b7280;font-family:monospace;">{f["rel_path"]}</span>'
+                f'{mod_badge}'
                 f'</div>',
                 unsafe_allow_html=True,
             )
+        with fc_edit:
+            edit_label = "Close" if is_editing else "Edit"
+            if st.button(edit_label, key=f"sr_edit_toggle_{f['rel_path']}", use_container_width=True):
+                if is_editing:
+                    st.session_state.sr_editing_rel_path = None
+                else:
+                    st.session_state.sr_editing_rel_path = f["rel_path"]
+                st.rerun()
         with fc_del:
-            if st.button("+ Delete", key=f"sr_add_del_{f['rel_path']}", use_container_width=True):
+            if st.button("＋ delete step", key=f"sr_add_del_{f['rel_path']}", use_container_width=True):
                 st.session_state.sr_steps.append({
                     "action": "delete", "rel_path": f["rel_path"],
-                    "abs_path": _abs_path(f["rel_path"]), "filename": f["filename"],
+                    "abs_path": abs_p, "filename": f["filename"],
                 })
                 st.rerun()
         with fc_apl:
-            if st.button("+ Apply", key=f"sr_add_apl_{f['rel_path']}", use_container_width=True):
+            if st.button("＋ apply step", key=f"sr_add_apl_{f['rel_path']}", use_container_width=True):
                 st.session_state.sr_steps.append({
                     "action": "apply", "rel_path": f["rel_path"],
-                    "abs_path": _abs_path(f["rel_path"]), "filename": f["filename"],
+                    "abs_path": abs_p, "filename": f["filename"],
                 })
                 st.rerun()
+
+        # ── Inline editor panel ───────────────────────────────────────────────
+        if is_editing:
+            try:
+                from streamlit_ace import st_ace
+            except ImportError:
+                st.error("streamlit-ace is not installed. Run: pip install streamlit-ace")
+                continue
+
+            # Load from disk only the very first time this file is opened
+            if f["rel_path"] not in st.session_state.sr_editor_content:
+                try:
+                    with open(abs_p, "r", encoding="utf-8") as fh:
+                        st.session_state.sr_editor_content[f["rel_path"]] = fh.read()
+                except Exception as e:
+                    st.error(f"Could not read file: {e}")
+                    continue
+
+            display_content = st.session_state.sr_editor_content[f["rel_path"]]
+
+            # Detect file extension for syntax highlighting
+            ext = f["filename"].rsplit(".", 1)[-1].lower() if "." in f["filename"] else "yaml"
+            lang_map = {"yml": "yaml", "yaml": "yaml", "sql": "sql", "json": "json", "py": "python"}
+            ace_lang = lang_map.get(ext, "yaml")
+
+            st.markdown(
+                f'<div class="sr-editor-panel">'
+                f'  <div class="sr-editor-header">'
+                f'    <span class="sr-editor-fname">{f["filename"]}</span>'
+                f'    <span class="sr-editor-path">{abs_p}</span>'
+                f'  </div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Edit below — changes sync automatically. Click 💾 Save to disk to write to the local file.")
+
+            # auto_update=True: every keystroke syncs to the return value immediately.
+            # This means `edited` always holds the latest content in the current render cycle.
+            edited = st_ace(
+                value=display_content,
+                language=ace_lang,
+                theme="tomorrow",
+                key=f"sr_ace_{f['rel_path']}",
+                height=340,
+                font_size=13,
+                tab_size=2,
+                show_gutter=True,
+                wrap=False,
+                auto_update=True,
+            )
+
+            # With auto_update=True, edited is always the latest content — never None.
+            # Persist it so it survives reruns triggered by other widgets (e.g. Save button).
+            if edited is not None and edited != display_content:
+                st.session_state.sr_editor_content[f["rel_path"]] = edited
+
+            # Use the most up-to-date value: prefer `edited` from this render over session state
+            latest_content = edited if edited is not None else st.session_state.sr_editor_content[f["rel_path"]]
+
+            save_col, revert_col, info_col = st.columns([1.2, 1.2, 6])
+
+            with save_col:
+                def _do_save(path=abs_p, rel=f["rel_path"], content=latest_content, orig=display_content):
+                    try:
+                        if rel not in st.session_state.sr_edit_original:
+                            st.session_state.sr_edit_original[rel] = orig
+                        with open(path, "w", encoding="utf-8") as fh:
+                            fh.write(content)
+                        st.session_state[f"sr_save_msg_{rel}"] = ("success", f"Saved → `{path}`")
+                    except Exception as e:
+                        st.session_state[f"sr_save_msg_{rel}"] = ("error", f"Save failed: {e}")
+
+                st.button("💾 Save to disk", key=f"sr_save_file_{f['rel_path']}",
+                          type="primary", use_container_width=True, on_click=_do_save)
+
+            with revert_col:
+                original = st.session_state.sr_edit_original.get(f["rel_path"])
+                if original is not None:
+                    def _do_revert(path=abs_p, rel=f["rel_path"], orig=original):
+                        try:
+                            with open(path, "w", encoding="utf-8") as fh:
+                                fh.write(orig)
+                            st.session_state.sr_editor_content[rel] = orig
+                            del st.session_state.sr_edit_original[rel]
+                            st.session_state[f"sr_save_msg_{rel}"] = ("success", "Reverted to original.")
+                        except Exception as e:
+                            st.session_state[f"sr_save_msg_{rel}"] = ("error", f"Revert failed: {e}")
+
+                    st.button("↩ Revert", key=f"sr_revert_{f['rel_path']}",
+                              use_container_width=True, on_click=_do_revert)
+
+            with info_col:
+                msg = st.session_state.get(f"sr_save_msg_{f['rel_path']}")
+                if msg:
+                    if msg[0] == "success":
+                        st.success(msg[1])
+                    else:
+                        st.error(msg[1])
+
+            st.markdown(" ")
 
     st.markdown(" ")
     st.divider()
@@ -942,7 +1098,6 @@ def render_build() -> None:
             )
             st.session_state.sr_stop_on_failure = (failure_choice == "Stop execution")
 
-            # Visual hint below the radio
             if st.session_state.sr_stop_on_failure:
                 st.markdown(
                     '<p style="font-size:12px;color:#d97706;margin:4px 0 12px 0;">'
@@ -973,12 +1128,8 @@ def render_build() -> None:
         if not runs:
             st.markdown(_label("No runs recorded yet."), unsafe_allow_html=True)
         else:
-            # ── Clear history — confirm before wiping ─────────────────────────
             if st.session_state.get("sr_confirm_clear_history"):
-                st.markdown(
-                    '<div class="confirm-box">Clear all run history permanently?</div>',
-                    unsafe_allow_html=True,
-                )
+                st.markdown('<div class="confirm-box">Clear all run history permanently?</div>', unsafe_allow_html=True)
                 cc_yes, cc_no, _ = st.columns([1.2, 1, 5])
                 with cc_yes:
                     if st.button("Yes, clear", key="sr_clear_hist_yes", use_container_width=True):
@@ -1011,9 +1162,9 @@ def render_build() -> None:
                 )
                 with st.expander(f"Details — {run['sequence_name']}  {ts}", expanded=False):
                     for s in run.get("steps", []):
-                        ok      = s.get("status") == "success"
-                        s_icon  = "✅" if ok else "❌"
-                        s_col   = "#16a34a" if ok else "#dc2626"
+                        ok     = s.get("status") == "success"
+                        s_icon = "✅" if ok else "❌"
+                        s_col  = "#16a34a" if ok else "#dc2626"
                         st.markdown(
                             f'<div style="display:flex;align-items:center;gap:10px;'
                             f'padding:5px 0;border-bottom:1px solid #f3f4f6;">'
@@ -1046,7 +1197,7 @@ def render_run() -> None:
                 st.session_state.sr_screen = "build"
                 st.rerun()
 
-    st.markdown("## Running Sequence")
+    st.markdown("## Running Deployment")
     st.divider()
 
     if st.session_state.sr_execute_now:
@@ -1056,37 +1207,26 @@ def render_run() -> None:
         failed_at: int|None = None
         total_steps         = len(steps)
 
-        # ── Live progress bar — updates as each step starts ───────────────────
         progress_ph = st.empty()
         status_ph   = st.empty()
 
         def _update_progress(step_n: int, filename: str, state: str = "running"):
-            """Update the top progress indicator in real time."""
             pct  = (step_n - 1) / total_steps
-            colors = {
-                "running": "#3b82f6",
-                "done":    "#16a34a",
-                "failed":  "#dc2626",
-            }
-            col = colors.get(state, "#3b82f6")
+            col  = {"running": "#3b82f6", "done": "#16a34a", "failed": "#dc2626"}.get(state, "#3b82f6")
+            label = {"running": "▶ Running", "done": "✅ Done", "failed": "❌ Failed"}.get(state, state)
             progress_ph.progress(pct, text=f"Step {step_n} of {total_steps}")
             status_ph.markdown(
                 f'<div style="padding:8px 14px;background:#f0f9ff;border:1px solid #bae6fd;'
                 f'border-radius:8px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">'
-                f'<span style="font-size:13px;font-weight:600;color:{col};">'
-                f'{"▶ Running" if state=="running" else ("✅ Done" if state=="done" else "❌ Failed")}'
-                f'</span>'
+                f'<span style="font-size:13px;font-weight:600;color:{col};">{label}</span>'
                 f'<span style="font-size:13px;color:#374151;">{filename}</span>'
-                f'<span style="font-size:11px;color:#6b7280;margin-left:auto;">'
-                f'Step {step_n} / {total_steps}</span>'
+                f'<span style="font-size:11px;color:#6b7280;margin-left:auto;">Step {step_n} / {total_steps}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
 
         for i, step in enumerate(steps):
             step_n = i + 1
-
-            # Update live progress indicator immediately when step starts
             _update_progress(step_n, step["filename"], "running")
 
             hdr_ph = st.empty()
@@ -1107,8 +1247,8 @@ def render_run() -> None:
             except Exception:
                 pass
 
-            cmd     = build_command(ctl_dir, step["action"], step["abs_path"], yaml_content)
-            lines   = [f"$ {format_command_display(cmd)}"]
+            cmd   = build_command(ctl_dir, step["action"], step["abs_path"], yaml_content)
+            lines = [f"$ {format_command_display(cmd)}"]
             out_ph.code("\n".join(lines), language="bash")
 
             rc = 0
@@ -1135,14 +1275,11 @@ def render_run() -> None:
                     f'</div>',
                     unsafe_allow_html=True,
                 )
-                # Track first failure
                 if failed_at is None:
                     failed_at = step_n
-
                 _update_progress(step_n, step["filename"], "failed")
 
                 if stop_on_failure:
-                    # Show remaining steps as not-run and stop
                     for j in range(i+1, len(steps)):
                         rem = steps[j]
                         st.markdown(
@@ -1155,7 +1292,6 @@ def render_run() -> None:
                             unsafe_allow_html=True,
                         )
                     break
-                # else: continue to next step
             else:
                 _update_progress(step_n, step["filename"], "done")
                 hdr_ph.markdown(
@@ -1168,11 +1304,9 @@ def render_run() -> None:
                     unsafe_allow_html=True,
                 )
 
-        # Clear live progress indicators before final rerun
         progress_ph.empty()
         status_ph.empty()
 
-        # Save to run history
         save_run(
             sequence_name=st.session_state.get("sr_current_seq_name", "Manual"),
             results=results,
@@ -1180,9 +1314,9 @@ def render_run() -> None:
             total_steps=len(steps),
         )
 
-        st.session_state.sr_run_results    = results
-        st.session_state.sr_failed_at      = failed_at
-        st.session_state.sr_run_done       = True
+        st.session_state.sr_run_results = results
+        st.session_state.sr_failed_at   = failed_at
+        st.session_state.sr_run_done    = True
         st.rerun()
 
     elif st.session_state.sr_run_done:
@@ -1192,13 +1326,11 @@ def render_run() -> None:
         total           = len(steps)
         ran             = len(results)
 
-        # ── Per-step results ──────────────────────────────────────────────────
         for r in results:
             ok      = r["status"] == "success"
             hdr_cls = "success" if ok else "failed"
             name_c  = "#111827" if ok else "#dc2626"
             icon    = "✅" if ok else "❌"
-
             st.markdown(
                 f'<div class="sr-run-step-header {hdr_cls}">'
                 f'<span class="sr-step-num">{r["step_n"]}</span>'
@@ -1212,7 +1344,6 @@ def render_run() -> None:
             with st.expander("Show output", expanded=(r["status"] == "failed")):
                 st.code("\n".join(r["lines"]), language="bash")
 
-        # Not-run steps (stop mode only — in run-all mode all steps ran)
         if stop_on_failure and failed_at is not None:
             for j in range(ran, total):
                 rem = steps[j]
@@ -1228,12 +1359,10 @@ def render_run() -> None:
 
         st.markdown(" ")
 
-        # ── Summary ───────────────────────────────────────────────────────────
         n_passed = sum(1 for r in results if r["status"] == "success")
         n_failed = sum(1 for r in results if r["status"] == "failed")
 
         if n_failed == 0:
-            # Full success — same for both modes
             st.markdown(
                 f'<div class="run-summary success">'
                 f'All {total} step{"s" if total!=1 else ""} completed successfully.'
@@ -1256,7 +1385,6 @@ def render_run() -> None:
                     st.rerun()
 
         elif stop_on_failure:
-            # Stop mode — existing behaviour
             n_done   = failed_at - 1
             n_notrun = total - ran
             done_txt = f"Steps 1–{n_done}" if n_done > 0 else "—"
@@ -1287,7 +1415,6 @@ def render_run() -> None:
                     st.rerun()
 
         else:
-            # Run-all mode — show passed/failed breakdown
             failed_names = [r["filename"] for r in results if r["status"] == "failed"]
             failed_list  = "".join(f"&nbsp;&nbsp;• {n}<br>" for n in failed_names)
             st.markdown(
@@ -1320,6 +1447,6 @@ def render_run() -> None:
 
 # ── Screen routing ─────────────────────────────────────────────────────────────
 _screen = st.session_state.sr_screen
-if _screen == "setup":  render_setup()
+if _screen == "setup":   render_setup()
 elif _screen == "build": render_build()
 elif _screen == "run":   render_run()

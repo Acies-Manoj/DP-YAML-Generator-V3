@@ -110,6 +110,25 @@ def render_step2():
 
         with st.expander(_dim_label, expanded=True):
             st.caption("Pre-filled from SQL columns. Rename, retype, mark PKs, or set individual dimensions as private.")
+            # ── Primary key requirement note ───────────────────────────────
+            _has_pk = any(d.get("primary_key") for d in t["dims"])
+            if not _has_pk:
+                st.markdown(
+                    '<div style="background:#fffbeb;border:1px solid #fcd34d;border-left:3px solid #f59e0b;'
+                    'border-radius:6px;padding:8px 14px;margin:6px 0 10px 0;font-size:13px;color:#92400e;">'
+                    '⚠️ <b>At least one dimension must be marked as Primary Key (PK)</b> — '
+                    'Lens requires a primary key on every table to function correctly.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div style="background:#f0fdf4;border:1px solid #86efac;border-left:3px solid #16a34a;'
+                    f'border-radius:6px;padding:6px 14px;margin:6px 0 10px 0;font-size:13px;color:#15803d;">'
+                    f'✅ Primary key set: <b>{", ".join(d["name"] for d in t["dims"] if d.get("primary_key"))}</b>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
             hh1, hh2, hh3, hh4, hh5 = st.columns([2, 2, 1.5, 1, 3])
             hh1.markdown("**Name**"); hh2.markdown("**Column**")
             hh3.markdown("**Type**"); hh4.markdown("**Flags**"); hh5.markdown("**Description**")
@@ -440,7 +459,15 @@ def render_step2():
 
         # ── PREVIEW BUTTON AT BOTTOM ──────────────────────────────────────
         st.divider()
-        if st.button("Preview Table YAML ↓", key=f"b_preview_bot_{tidx}", type="primary", use_container_width=True):
+        _has_pk_final = any(d.get("primary_key") for d in t["dims"])
+        if not _has_pk_final:
+            st.error(
+                "⚠️ Cannot generate Table YAML — no primary key set. "
+                "Go to the Dimensions section above and check **PK** on at least one column.",
+                icon=None,
+            )
+        if st.button("Preview Table YAML ↓", key=f"b_preview_bot_{tidx}", type="primary",
+                     use_container_width=True, disabled=not _has_pk_final):
             st.session_state[f"b_preview_bot_clicked_{tidx}"] = True
             st.rerun()
 

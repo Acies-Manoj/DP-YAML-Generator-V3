@@ -61,7 +61,7 @@ def generate_table_yaml(table: dict) -> str:
             lines.append("    segments:")
             for s in valid:
                 lines.append(f"      - name: {s['name'].strip()}")
-                lines.append(f"        sql: {s['sql'].strip()}")
+                lines.append(f'        sql: "{s["sql"].strip()}"')
                 if s.get("description", "").strip():
                     lines.append(f"        description: {s['description'].strip()}")
                 inc = s.get("includes", [])

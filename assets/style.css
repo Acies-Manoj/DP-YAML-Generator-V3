@@ -94,7 +94,7 @@ html, body, [class*="css"] {
 .step-card.locked   { background-color: #f9fafb; border-color: #e5e7eb; opacity: 0.5; }
 .step-card.skipped  { background-color: #fffbeb; border-color: #fcd34d; }
 .step-card h4 { margin: 0 0 3px 0; font-size: 14px; font-weight: 600; color: #111827; }
-.step-card p  { margin: 0; font-size: 12px; color: #6b7280; }
+.step-card p  { margin: 0; font-size: 12px; color: #374151; }
 
 .step-num {
     display: inline-flex; align-items: center; justify-content: center;
@@ -103,8 +103,8 @@ html, body, [class*="css"] {
 }
 .step-num.complete { background: #059669; color: white; }
 .step-num.current  { background: #3b82f6; color: white; }
-.step-num.pending  { background: #e5e7eb; color: #6b7280; }
-.step-num.locked   { background: #f3f4f6; color: #9ca3af; }
+.step-num.pending  { background: #d1d5db; color: #374151; }
+.step-num.locked   { background: #e5e7eb; color: #6b7280; }
 .step-num.skipped  { background: #fef3c7; color: #d97706; }
 
 .step-badge {
@@ -113,10 +113,10 @@ html, body, [class*="css"] {
 }
 .b-complete { background: #059669; color: white; }
 .b-current  { background: #3b82f6; color: white; }
-.b-pending  { background: #e5e7eb; color: #6b7280; }
-.b-locked   { background: #f3f4f6; color: #9ca3af; }
+.b-pending  { background: #dbeafe; color: #1d4ed8; }
+.b-locked   { background: #e5e7eb; color: #6b7280; }
 .b-skipped  { background: #fef3c7; color: #d97706; }
-.b-optional { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+.b-optional { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
 
 /* ── Section Headers ──────────────────────────────────────────── */
 .section-header {

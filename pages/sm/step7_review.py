@@ -66,8 +66,8 @@ def render_step7(sm_origin, BUNDLE_YAML_KEYS_PRESERVE, BUNDLE_KEYS_TO_CLEAR, bac
     with tab_ug:
         if st.session_state.bundle_user_groups_yaml:
             st.code(st.session_state.bundle_user_groups_yaml, language="yaml")
-            st.download_button("Download user_groups.yaml", data=st.session_state.bundle_user_groups_yaml,
-                file_name="user_groups.yaml", mime="text/yaml", use_container_width=True)
+            st.download_button("Download user_groups.yml", data=st.session_state.bundle_user_groups_yaml,
+                file_name="user_groups.yml", mime="text/yaml", use_container_width=True)
         else:
             st.info("User Groups YAML not yet generated.")
 
@@ -85,19 +85,24 @@ def render_step7(sm_origin, BUNDLE_YAML_KEYS_PRESERVE, BUNDLE_KEYS_TO_CLEAR, bac
 
     import zipfile, io
     zip_buf = io.BytesIO()
+    _sm  = "build/semantic-model"
+    _mdl = f"{_sm}/model"
     with zipfile.ZipFile(zip_buf, "w") as zf:
+        # Lens YAML — lives as deployment.yml alongside model/
+        zf.writestr(f"{_sm}/deployment.yml", st.session_state.bundle_generated_lens_yaml)
         for tbl in tables:
-            zf.writestr(f"sqls/{tbl['name']}.sql",   tbl["generated_sql"])
-            zf.writestr(f"semanticmodel/model/tables/{tbl['name']}.yml",  tbl["generated_table_yaml"])
+            # SQLs and table YAMLs — under model/sqls/ and model/tables/
+            zf.writestr(f"{_mdl}/sqls/{tbl['name']}.sql",    tbl["generated_sql"])
+            zf.writestr(f"{_mdl}/tables/{tbl['name']}.yml",  tbl["generated_table_yaml"])
         for v in views:
             if v.get("generated_view_yaml"):
-                zf.writestr(f"semanticmodel/model/views/{v['name']}.yml", v["generated_view_yaml"])
+                zf.writestr(f"{_mdl}/views/{v['name']}.yml", v["generated_view_yaml"])
         if st.session_state.bundle_user_groups_yaml:
-            zf.writestr("semanticmodel/model/user_groups.yaml", st.session_state.bundle_user_groups_yaml)
-        zf.writestr(f"{lens}.yml", st.session_state.bundle_generated_lens_yaml)
+            # user_groups uses .yml consistently
+            zf.writestr(f"{_mdl}/user_groups.yml", st.session_state.bundle_user_groups_yaml)
         if st.session_state.bundle_repo_cred_yaml:
             cred_fname = st.session_state.bundle_repo_cred_name or "repo-cred"
-            zf.writestr(f"{cred_fname}.yml", st.session_state.bundle_repo_cred_yaml)
+            zf.writestr(f"secrets/{cred_fname}.yml", st.session_state.bundle_repo_cred_yaml)
     zip_buf.seek(0)
 
     st.download_button(
@@ -121,4 +126,3 @@ def render_step7(sm_origin, BUNDLE_YAML_KEYS_PRESERVE, BUNDLE_KEYS_TO_CLEAR, bac
                 if k not in keep:
                     st.session_state.pop(k, None)
             st.switch_page("pages/cadp_flow.py")
-

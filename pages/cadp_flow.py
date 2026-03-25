@@ -113,7 +113,7 @@ for n, info in STEPS.items():
         st.markdown(f"""
             <div class="step-card {card_cls}">
                 <span class="step-num {card_cls}">{check}</span>
-                <span style="font-size:14px; font-weight:600; color:#e5e7eb;">
+                <span style="font-size:14px; font-weight:600; color:#111827;">
                     Step {n} — {info['label']}{opt_note}
                 </span>
                 <span class="step-badge {badge_cls}">{badge_txt}</span>
@@ -219,9 +219,9 @@ if mandatory_done:
             files[f"secrets/{sec_name}.yml"] = sec["cred_yaml"]
 
     # ── secrets/ — repo credential (git sync secret for Lens) ────────────────
-    if st.session_state.get("ind_rc_yaml") and st.session_state.get("ind_rc_name"):
-        rc_name = st.session_state.ind_rc_name.strip()
-        files[f"secrets/{rc_name}.yml"] = st.session_state.ind_rc_yaml
+    if st.session_state.get("bundle_repo_cred_yaml") and st.session_state.get("bundle_repo_cred_name"):
+        rc_name = st.session_state.bundle_repo_cred_name.strip()
+        files[f"secrets/{rc_name}.yml"] = st.session_state.bundle_repo_cred_yaml
 
     # ── Quality Checks (optional) ─────────────────────────────────────────────
     if 3 in completed and st.session_state.get("cadp_qc_generated_yaml"):
