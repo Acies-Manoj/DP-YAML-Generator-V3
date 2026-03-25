@@ -10,6 +10,14 @@ import streamlit as st
 import json
 import sys, os
 import pandas as pd
+import copy
+
+@st.cache_data
+def read_excel_cached(file):
+    return pd.read_excel(file)
+
+from utils.qc_learning.qc_diff_engine import detect_new_rules
+from utils.qc_learning.save_learning import save_reference_rules
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -218,6 +226,7 @@ with d3:
                     _chk["_original"] = {"name": _chk.get("name"), "syntax": _chk.get("syntax"), "body": json.dumps(_chk.get("body"), sort_keys=True)}
                 st.session_state.sadp_qc_default_checks    = _defs
                 st.session_state.sadp_qc_accepted_defaults = {i: True for i in range(len(_defs))}
+                st.session_state["generated_qc_checks"] = copy.deepcopy(_defs)
                 if _ctx["errors"]:
                     for err in _ctx["errors"]:
                         st.warning(f"⚠️ {err}")
@@ -272,7 +281,7 @@ with llm_c2:
         st.session_state.sadp_qc_llm_error       = None
         st.rerun()
 
-if run_llm:
+if run_llm and not st.session_state.sadp_qc_llm_done:
     with st.spinner("Calling LLM..."):
         try:
             ctx_for_llm = ctx.copy()
@@ -284,10 +293,16 @@ if run_llm:
                     col_desc = dict(zip(tbl_rows["column_name"], tbl_rows["column_description"]))
                     for col in ctx_for_llm["columns"]:
                         col["description"] = col_desc.get(col["name"], "")
-            suggs = call_llm(ctx_for_llm, st.session_state.sadp_qc_default_checks)
+            try:
+                suggs = call_llm(ctx_for_llm, st.session_state.sadp_qc_default_checks)
+            except RuntimeError as e:
+                st.session_state.sadp_qc_llm_error = str(e)
+                st.rerun()
             for chk in suggs:
                 chk["_original"] = {"name": chk.get("name"), "syntax": chk.get("syntax"), "body": json.dumps(chk.get("body"), sort_keys=True)}
             st.session_state.sadp_qc_llm_suggestions = suggs
+            generated_all = st.session_state.sadp_qc_default_checks + suggs
+            st.session_state["generated_qc_checks"] = copy.deepcopy(generated_all)
             st.session_state.sadp_qc_accepted_llm    = {i: False for i in range(len(suggs))}
             st.session_state.sadp_qc_llm_done        = True
             st.session_state.sadp_qc_llm_error       = None
@@ -419,6 +434,30 @@ if total_acc > 0:
     pd.DataFrame(rows).to_excel(xls_buf, index=False, engine="openpyxl")
     st.download_button("📥 Download Checks for Approval (Excel)", data=xls_buf.getvalue(), file_name="sadp_qc_checks.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
+st.divider()
+section_header("🧠", "Learn from Edited QC Excel")
+
+uploaded_learning = st.file_uploader(
+    "Upload edited QC Excel to improve future QC suggestions",
+    type=["xlsx"],
+    key="sadp_learning_upload"
+)
+
+if uploaded_learning and "sadp_learning_done" not in st.session_state:
+    df_learning = read_excel_cached(uploaded_learning)
+    required_cols = {"check_name", "syntax", "body", "category", "column"}
+    if not required_cols.issubset(set(df_learning.columns)):
+        st.error("Invalid QC Excel format.")
+    else:
+        generated_checks = st.session_state.get("generated_qc_checks", [])
+        learned_rules = detect_new_rules(generated_checks, df_learning)
+        if learned_rules:
+            count = save_reference_rules(learned_rules)
+            st.success(f"🧠 Learned {count} new QC rule(s) from your edits")
+        else:
+            st.info("No new rules detected")
+    st.session_state["sadp_learning_done"] = True
+    
 if st.button("➕ Add Manual Check", use_container_width=True):
     st.session_state.sadp_qc_show_manual_form = True
 

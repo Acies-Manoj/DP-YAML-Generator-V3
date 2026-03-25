@@ -12,12 +12,21 @@ import streamlit as st
 import json
 import sys, os
 import pandas as pd
+import copy
+
+from utils.qc_learning.qc_diff_engine import detect_new_rules
+from utils.qc_learning.save_learning import save_reference_rules
+
+@st.cache_data
+def read_excel_cached(file):
+    return pd.read_excel(file)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils.ui_utils import load_global_css, section_header, app_footer
 from utils.default_checks import generate_default_checks
 from utils.llm_checks import call_llm
+from utils.sf_utils import fetch_full_context, fetch_schema_overview
 from utils.qc_yaml_generator import generate_qc_yaml
 from utils.qc_config import PROVIDER, GROQ_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL
 
@@ -84,7 +93,7 @@ def build_ctx_from_bundle_table(tbl: dict) -> dict:
 
             # simulate profiling
             "avg_length": 10 if sm_type == "string" else None,
-            "sample_values": ["KNOWN_VALUE"] if is_enum else [],
+            "sample_values": [],
 
             "is_likely_enum": is_enum,
 
@@ -108,6 +117,31 @@ def build_ctx_from_bundle_table(tbl: dict) -> dict:
         "errors":            [],
     }
 
+def merge_contexts(semantic_ctx, data_ctx):
+    merged = copy.deepcopy(data_ctx)
+
+    merged["table_description"] = semantic_ctx.get("table_description", "")
+
+    sem_cols = {c["name"].lower(): c for c in semantic_ctx["columns"]}
+
+    for col in merged["columns"]:
+        name = col["name"]
+        key = name.lower()
+
+        if key in sem_cols:
+            col["description"] = sem_cols[key].get("description", "")
+
+            if sem_cols[key].get("is_likely_enum"):
+                col["is_likely_enum"] = True
+
+        # 🔥 ADD THIS BLOCK HERE (CORRECT PLACE)
+        if col.get("distinct_count") and merged.get("row_count") and merged["row_count"] > 0:
+            ratio = col["distinct_count"] / merged["row_count"]
+
+            if ratio < 0.1 and col["distinct_count"] < 50:
+                col["is_likely_enum"] = True
+
+    return merged
 # ─────────────────────────────────────────────────────────────────────────────
 CATEGORIES = [
     ("Schema",       "🔷", "#1e3a5f", "#93c5fd"),
@@ -132,6 +166,14 @@ _QC_DEFAULTS = {
     "cadp_qc_wf_tag_region": "", "cadp_qc_wf_tag_dataos": "", "cadp_qc_wf_tag_custom": "",
     "cadp_qc_last_yaml": None, "cadp_qc_last_yaml_name": "",
 }
+# ── QC Progress Tracker ─────────────────────────────────────────────
+if "cadp_qc_generated_tables" not in st.session_state:
+    st.session_state.cadp_qc_generated_tables = set()
+
+# Store all generated QC YAMLs (one per table)
+if "cadp_qc_all_yaml" not in st.session_state:
+    st.session_state.cadp_qc_all_yaml = {}
+
 for k, v in _QC_DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -221,11 +263,24 @@ if not _bundle_tbls:
     )
     st.stop()
 
-_tbl_names = [t["name"] for t in _bundle_tbls]
-_saved     = st.session_state.cadp_qc_sel_table
-_sel_idx   = _tbl_names.index(_saved) if _saved in _tbl_names else 0
+_tbl_names = []
+for t in _bundle_tbls:
+    name = t["name"]
+    if name in st.session_state.cadp_qc_generated_tables:
+        name = f"✅ {name}"
+    _tbl_names.append(name)
+_saved = st.session_state.cadp_qc_sel_table
+_clean_names = [n.replace("✅ ", "") for n in _tbl_names]
+
+if _saved in _clean_names:
+    _sel_idx = _clean_names.index(_saved)
+else:
+    # auto-pick first unprocessed table
+    remaining = [t for t in _clean_names if t not in st.session_state.cadp_qc_generated_tables]
+    _sel_idx = _clean_names.index(remaining[0]) if remaining else 0
 
 _sel_name = st.selectbox("Table", _tbl_names, index=_sel_idx, key="cadp_qc_tbl_select")
+_sel_name = _sel_name.replace("✅ ", "")
 
 # Rebuild ctx whenever the selection changes
 if _sel_name != st.session_state.cadp_qc_sel_table:
@@ -235,7 +290,60 @@ if _sel_name != st.session_state.cadp_qc_sel_table:
 if not st.session_state.cadp_qc_ctx:
     _matched = next((t for t in _bundle_tbls if t["name"] == _sel_name), None)
     if _matched:
-        _ctx = build_ctx_from_bundle_table(_matched)
+        # Try existing connections first
+        conn = (
+            st.session_state.get("sf_conn") or
+            st.session_state.get("sadp_qc_sf_conn")
+        )
+
+        # If no connection yet, try to create one from Depot credentials
+        if not conn:
+            _acct = st.session_state.get("depot_account")
+            _user = st.session_state.get("depot_username")
+            _pw   = st.session_state.get("depot_password")
+            _wh   = st.session_state.get("depot_warehouse", "")
+
+            if _acct and _user and _pw:
+                try:
+                    from utils.sf_utils import connect
+                    conn = connect(_acct, _user, _pw, warehouse=_wh)
+                    st.session_state["sf_conn"] = conn
+                except Exception as e:
+                    st.warning(f"⚠️ Could not connect to Snowflake using Depot credentials: {e}")
+                    conn = None
+
+        if conn:
+            try:
+                db = (
+                    st.session_state.get("selected_db") or
+                    st.session_state.get("sadp_qc_sf_last_db") or
+                    st.session_state.get("depot_database")
+                )
+                schema = (
+                    st.session_state.get("selected_schema") or
+                    st.session_state.get("sadp_qc_sf_last_schema")
+                )
+
+                # 🔥 Fetch real data profiling (SADP logic)
+                data_ctx = fetch_full_context(conn, db, schema, _sel_name)
+                if not data_ctx.get("row_count"):           
+                    data_ctx["row_count"] = 100000  # fallback
+                data_ctx["schema_overview"] = fetch_schema_overview(conn, db, schema)
+
+                # 🔥 Build semantic context (CADP logic)
+                semantic_ctx = build_ctx_from_bundle_table(_matched)
+
+                # 🔥 Merge both
+                _ctx = merge_contexts(semantic_ctx, data_ctx)
+
+                st.success("🔥 QC Mode: Hybrid (Data + Semantic)")
+
+            except Exception as e:
+                st.warning(f"⚠️ Falling back to metadata-only: {e}")
+                _ctx = build_ctx_from_bundle_table(_matched)
+
+        else:
+            _ctx = build_ctx_from_bundle_table(_matched)
         st.session_state.cadp_qc_ctx = _ctx
         _defs = generate_default_checks(_ctx)
         for _chk in _defs:
@@ -246,6 +354,7 @@ if not st.session_state.cadp_qc_ctx:
             }
         st.session_state.cadp_qc_default_checks    = _defs
         st.session_state.cadp_qc_accepted_defaults = {i: True for i in range(len(_defs))}
+        st.session_state["generated_qc_checks"] = copy.deepcopy(_defs)
 
 if not st.session_state.cadp_qc_ctx:
     st.stop()
@@ -261,6 +370,26 @@ st.info(
     f"✅ **{_sel_name}** — {_n_cols} columns loaded from Table YAML."
     + (" · Semantic Model descriptions available for LLM. ✨" if _has_sm_desc else "")
 )
+if st.session_state.get("sf_conn"):
+    st.caption("🔍 Using Snowflake data for realistic QC generation")
+else:
+    st.caption("🧠 Using semantic model only (no data access)")
+# ── QC Progress Display ─────────────────────────────────────────────
+all_tables = [t["name"] for t in _bundle_tbls]
+done_tables = st.session_state.cadp_qc_generated_tables
+remaining_tables = [t for t in all_tables if t not in done_tables]
+
+st.markdown(f"""
+📊 **QC Progress**
+- ✅ Completed: {len(done_tables)} / {len(all_tables)}
+- ⏳ Remaining: {len(remaining_tables)}
+""")
+
+if remaining_tables:
+    st.caption("Remaining tables: " + ", ".join(remaining_tables))
+
+if len(done_tables) == len(all_tables):
+    st.success("🎉 All QC files generated!")
 
 # ── ② Checks Review ───────────────────────────────────────────────────────────
 st.divider()
@@ -310,9 +439,10 @@ with llm_c2:
         st.session_state.cadp_qc_llm_error       = None
         st.rerun()
 
-if run_llm:
+if run_llm and not st.session_state.cadp_qc_llm_done:
     with st.spinner("Calling LLM..."):
         try:
+            print("🚀 LLM button clicked — entering call block")
             ctx_for_llm = ctx.copy()
             ctx_for_llm["columns"] = [c.copy() for c in ctx["columns"]]
 
@@ -335,7 +465,11 @@ if run_llm:
                         col["description"] = col_desc.get(col["name"], "")
                     _sm_injected = True
 
-            suggs = call_llm(ctx_for_llm, st.session_state.cadp_qc_default_checks)
+            try:
+                suggs = call_llm(ctx_for_llm, st.session_state.cadp_qc_default_checks)
+            except RuntimeError as e:
+                st.session_state.cadp_qc_llm_error = str(e)
+                st.rerun()
             for chk in suggs:
                 chk["_original"] = {
                     "name":   chk.get("name"),
@@ -343,6 +477,8 @@ if run_llm:
                     "body":   json.dumps(chk.get("body"), sort_keys=True),
                 }
             st.session_state.cadp_qc_llm_suggestions  = suggs
+            generated_all = st.session_state.cadp_qc_default_checks + suggs
+            st.session_state["generated_qc_checks"] = copy.deepcopy(generated_all)
             st.session_state.cadp_qc_accepted_llm     = {i: False for i in range(len(suggs))}
             st.session_state.cadp_qc_llm_done         = True
             st.session_state.cadp_qc_llm_error        = None
@@ -476,6 +612,33 @@ if total_acc > 0:
     pd.DataFrame(rows).to_excel(xls_buf, index=False, engine="openpyxl")
     st.download_button("📥 Download Checks for Approval (Excel)", data=xls_buf.getvalue(), file_name="cadp_qc_checks.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
+st.divider()
+section_header("🧠", "Learn from Edited QC Excel")
+
+uploaded_learning = st.file_uploader(
+    "Upload edited QC Excel to improve future QC suggestions",
+    type=["xlsx"],
+    key="cadp_learning_upload"
+)
+
+if uploaded_learning and "learning_done" not in st.session_state:
+    df_learning = read_excel_cached(uploaded_learning)
+    required_cols = {"check_name", "syntax", "body", "category", "column"}
+    if not required_cols.issubset(set(df_learning.columns)):
+        st.error("Invalid QC Excel format.")
+    else:
+        generated_checks = st.session_state.get("generated_qc_checks")
+        if not generated_checks:
+            st.warning("Generate QC checks first before uploading edited Excel.")
+        else:
+            learned_rules = detect_new_rules(generated_checks, df_learning)
+            if learned_rules:
+                count = save_reference_rules(learned_rules)
+                st.success(f"🧠 Learned {count} new QC rule(s) from your edits")
+            else:
+                st.info("No new rules detected")
+        st.session_state["learning_done"] = True
+
 if st.button("➕ Add Manual Check", use_container_width=True):
     st.session_state.cadp_qc_show_manual_form = True
 
@@ -607,10 +770,20 @@ with st.form("cadp_meta_form"):
                     accepted_checks=accepted, dataset_udl=udl, workspace=wf_workspace.strip(),
                     engine=wf_engine.strip() or None, cluster=wf_cluster.strip() or None,
                 )
-                st.session_state.cadp_qc_last_yaml      = yaml_out
-                st.session_state.cadp_qc_last_yaml_name = f"{wf_name.strip()}.yaml"
-                st.session_state.cadp_qc_generated_yaml = yaml_out
-                st.session_state.cadp_qc_name           = wf_name.strip()
+                file_name = f"soda-{ctx['table'].lower()}-qc.yml"
+
+                # store per table
+                st.session_state.cadp_qc_all_yaml[ctx["table"]] = {
+                    "content": yaml_out,
+                    "file_name": file_name
+                }
+
+                # keep last one for preview
+                st.session_state.cadp_qc_last_yaml = yaml_out
+                st.session_state.cadp_qc_last_yaml_name = file_name
+                # Track completed table
+                st.session_state.cadp_qc_generated_tables.add(ctx["table"])
+                st.success(f"✅ QC generated for table: {ctx['table']}")
             except Exception as e:
                 st.error(f"YAML generation failed: {e}")
 
@@ -618,11 +791,31 @@ with st.form("cadp_meta_form"):
 if st.session_state.cadp_qc_last_yaml:
     st.divider()
     section_header("📄", "Generated QC YAML")
-    dl_col, back_col = st.columns([2, 2])
+    dl_col, next_col, back_col = st.columns([2, 2, 2])
     with dl_col:
         st.download_button("⬇️ Download YAML", data=st.session_state.cadp_qc_last_yaml,
             file_name=st.session_state.cadp_qc_last_yaml_name or "cadp-qc.yaml",
             mime="text/yaml", use_container_width=True, type="primary")
+    with next_col:
+        done = st.session_state.cadp_qc_generated_tables
+        remaining = [t for t in all_tables if t not in done]
+
+        if st.button(
+            "➡️ Generate QC for Another Table",
+            use_container_width=True,
+            disabled=len(remaining) == 0
+        ):
+            all_tables = [t["name"] for t in _bundle_tbls]
+            done = st.session_state.cadp_qc_generated_tables
+
+            # find next remaining table
+            next_table = next((t for t in all_tables if t not in done), None)
+
+            if next_table:
+                st.session_state.cadp_qc_sel_table = next_table
+
+            reset_table_state()
+            st.rerun()
     with back_col:
         if st.button("✅ Complete & Back to CADP Flow →", use_container_width=True):
             if "cadp_completed_steps" not in st.session_state:

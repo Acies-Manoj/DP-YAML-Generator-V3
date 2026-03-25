@@ -1,0 +1,224 @@
+patterns:
+
+# ─────────────────────────────────────────
+# COMPLETENESS CHECKS
+# ─────────────────────────────────────────
+
+- syntax: missing_count(BRANCH_ID) = 0
+  category: Completeness
+  description: Branch ID should never be missing
+
+- syntax: missing_count(REGION_CODE) = 0
+  category: Completeness
+  description: Region code should always exist
+
+- syntax: missing_count(OFFICE_CODE) = 0
+  category: Completeness
+  description: Office code must not be null
+
+- syntax: missing_count(CONTRACT_ID) = 0
+  category: Completeness
+  description: Contract ID should never be null
+
+- syntax: missing_count(CUSTOMER_ID) = 0
+  category: Completeness
+  description: Customer identifier must exist
+
+- syntax: missing_count(UNIT_EID) = 0
+  category: Completeness
+  description: Unit identifier should be present
+
+- syntax: missing_count(BUILDING_EID) = 0
+  category: Completeness
+  description: Building identifier must exist
+
+- syntax: missing_count(CUSTOMER_EID) = 0
+  category: Completeness
+  description: Customer entity identifier should not be missing
+
+- syntax: missing_count(BILLTO_CUSTOMER_EID) = 0
+  category: Completeness
+  description: Billing customer reference must exist
+
+- syntax: missing_percent(SECTOR) < 4%
+  category: Completeness
+  description: Sector column should not exceed acceptable missing threshold
+
+- syntax: missing_percent(COUNTRY) < 1%
+  category: Completeness
+  description: Country field should rarely be null
+
+
+# ─────────────────────────────────────────
+# UNIQUENESS CHECKS
+# ─────────────────────────────────────────
+
+- syntax: duplicate_count(BRANCH_ID) = 0
+  category: Uniqueness
+  description: Branch ID should be unique
+
+- syntax: duplicate_count(CONTRACT_ID) = 0
+  category: Uniqueness
+  description: Contract ID must be unique
+
+- syntax: duplicate_count(CONTRACT_UNIT_SUMMARY_GOLDEN_RECORD_ID) = 0
+  category: Uniqueness
+  description: Golden record ID must not be duplicated
+
+
+# ─────────────────────────────────────────
+# LENGTH / FORMAT CHECKS
+# ─────────────────────────────────────────
+
+- syntax: avg_length(REGION_CODE) = 3
+  category: Accuracy
+  description: Region codes should have standard length
+
+- syntax: avg_length(OFFICE_CODE) <= 3
+  category: Accuracy
+  description: Office code length should remain within expected bounds
+
+
+# ─────────────────────────────────────────
+# VALIDITY CHECKS
+# ─────────────────────────────────────────
+
+- syntax: invalid_count(CONTRACT_STATUS) = 0
+  category: Validity
+  description: Contract status must contain only approved values
+  body:
+    valid values:
+      - Suspended
+      - In Service
+      - Booked
+      - Cancelled
+      - Contract Changed
+      - Rejected
+      - Renegotiated
+      - Expired
+
+- syntax: invalid_count(ACTUAL_VISIT_FREQUENCY) = 0
+  category: Validity
+  description: Visit frequency must match allowed categories
+  body:
+    valid values:
+      - No Visits last 12m
+      - Semi-annual to quarterly
+      - Bi-monthly
+      - Monthly
+      - More than monthly
+
+- syntax: invalid_count(CONTRACT_ID) = 0
+  category: Validity
+  description: Contract IDs should follow valid identifier format
+  body:
+    valid regex: "^[A-Za-z0-9-]+$"
+
+- syntax: invalid_count(CONTRACT_STATUS_NM) = 0
+  category: Validity
+  description: Contract status should follow allowed enumeration
+  body:
+    valid values:
+      - In Service
+      - Renegotiated
+      - Suspended
+      - Expired
+      - Cancelled
+      - Booked
+      - Rejected
+      - Contract Changed
+
+
+# ─────────────────────────────────────────
+# NUMERIC VALIDATION
+# ─────────────────────────────────────────
+
+- syntax: invalid_count(NUMBER_OF_ELEVATORS) = 0
+  category: Accuracy
+  description: Elevator count must be valid
+  body:
+    valid min: 0
+
+- syntax: invalid_count(NUM_BUILDING_IN_ZIPCODE) = 0
+  category: Accuracy
+  description: Building count must be non-negative
+  body:
+    valid min: 1
+
+
+# ─────────────────────────────────────────
+# SCHEMA CHECKS
+# ─────────────────────────────────────────
+
+- syntax: schema
+  category: Schema
+  description: Ensure essential columns are present
+  body:
+    warn:
+      when required column missing:
+        - BRANCH_ID
+        - REGION_CODE
+        - OFFICE_CODE
+        - GSSCORE_SERVICEBRANCHNUMBER
+
+- syntax: schema
+  category: Schema
+  description: Ensure contract table essential columns exist
+  body:
+    warn:
+      when required column missing:
+        - CONTRACT_ID
+        - CUSTOMER_ID
+        - CONTRACT_STATUS
+        - ORIGINAL_CONTRACT_DATE
+        - CONTRACT_TERM_START_DATE
+
+
+# ─────────────────────────────────────────
+# DATA TYPE VALIDATION
+# ─────────────────────────────────────────
+
+- syntax: schema
+  category: Schema
+  description: Validate column data types
+  body:
+    fail:
+      when wrong column type:
+        CONTRACT_ID: string
+        ONT_MARGIN_PERCENT_1Y: number
+        ONT_MARGIN_PERCENT_3Y: number
+        ONT_MARGIN_PERCENT_5Y: number
+
+- syntax: schema
+  category: Schema
+  description: Validate contract unit bridge datatypes
+  body:
+    fail:
+      when wrong column type:
+        CONTRACT_UNIT_SUMMARY_GOLDEN_RECORD_ID: string
+        UNIT_EID: string
+        BUILDING_EID: string
+        CUSTOMER_EID: string
+        BILLTO_CUSTOMER_EID: string
+        CONTRACT_STATUS_NM: string
+
+
+# ─────────────────────────────────────────
+# FRESHNESS CHECKS
+# ─────────────────────────────────────────
+
+- syntax: freshness(UPDATED_AT)
+  category: Freshness
+  description: Data freshness validation
+  body:
+    warn: when > 2d
+    fail: when > 7d
+
+
+# ─────────────────────────────────────────
+# TABLE LEVEL CHECKS
+# ─────────────────────────────────────────
+
+- syntax: row_count > 0
+  category: Accuracy
+  description: Table should contain data

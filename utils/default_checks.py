@@ -119,17 +119,33 @@ def generate_default_checks(ctx: dict) -> list[dict]:
     # ─────────────────────────────────────────────────────────────────
 
     for col in columns:
+        col_name = col["name"]
+        name = col_name.lower()
+        desc = (col.get("description") or "").lower()
+
+        null_pct = col.get("null_pct")
 
         if not col["nullable"] or col["is_pk"]:
+            syntax = f"missing_count({col_name}) = 0"
 
-            checks.append({
-                "col": col["name"],
-                "category": "Completeness",
-                "name": f"{col['name']} should not have missing values",
-                "syntax": f"missing_count({col['name']}) = 0",
-                "body": None,
-                "source": "default",
-            })
+        elif null_pct is not None:
+            if null_pct == 0:
+                syntax = f"missing_count({col_name}) = 0"
+            elif null_pct < 5:
+                syntax = f"missing_percent({col_name}) < 5"
+            else:
+                syntax = f"missing_percent({col_name}) < 10"
+        else:
+            syntax = f"missing_count({col_name}) = 0"
+
+        checks.append({
+            "col": col_name,
+            "category": "Completeness",
+            "name": f"{col_name} should not be null" if "missing_count" in syntax and "= 0" in syntax else f"{col_name} should have less than acceptable missing values",
+            "syntax": syntax,
+            "body": None,
+            "source": "default",
+        })
 
     # ─────────────────────────────────────────────────────────────────
     # RULE 3B — Nullable categorical columns
@@ -147,7 +163,7 @@ def generate_default_checks(ctx: dict) -> list[dict]:
                 "col": col["name"],
                 "category": "Completeness",
                 "name": f"{col['name']} should have less than 5% missing values",
-                "syntax": f"missing_percent({col['name']}) < 5%",
+                "syntax": f"missing_percent({col['name']}) < 5",
                 "body": None,
                 "source": "default",
             })
@@ -212,7 +228,14 @@ def generate_default_checks(ctx: dict) -> list[dict]:
                 continue
 
         # Boolean detection
-        if is_boolean_column(col):
+        vals = [str(v).lower() for v in col.get("sample_values", []) if v]
+
+        if is_boolean_column(col) and len(vals) >= 2:
+
+            vals = [str(v) for v in col.get("sample_values", []) if v is not None]
+
+            if not vals:
+                continue
 
             checks.append({
                 "col": name,
@@ -234,7 +257,14 @@ def generate_default_checks(ctx: dict) -> list[dict]:
             and col.get("sample_values")
         ):
 
-            vals = [str(v) for v in col["sample_values"]]
+            vals = [
+                str(v) for v in col["sample_values"]
+                if v and str(v).upper() != "KNOWN_VALUE"
+            ]
+
+            # 🔥 ADD THIS LINE HERE
+            if len(vals) < 2:
+                continue
 
             checks.append({
                 "col": name,
@@ -245,6 +275,50 @@ def generate_default_checks(ctx: dict) -> list[dict]:
                 "source": "default",
             })
 
+        # ─────────────────────────────────────────
+        # 🔥 NEW: DATA + DESCRIPTION INTELLIGENCE
+        # ─────────────────────────────────────────
+
+        desc = (col.get("description") or "").lower()
+        name_lower = name.lower()
+
+        # Financial fields → non-negative (valid min is body, syntax must be = 0)
+        if any(k in name_lower for k in ["revenue", "amount", "price", "cost", "income", "salary", "fee"]):
+            checks.append({
+                "col": name,
+                "category": "Validity",
+                "name": f"{name} should be non-negative",
+                "syntax": f"invalid_count({name}) = 0",
+                "body": {"valid min": 0},
+                "source": "default",
+            })
+
+        # Date / time → freshness (only for timestamp columns)
+        if any(k in name_lower for k in ["date", "time"]) and not is_freshness_column(name):
+            if is_timestamp(col["sf_type"]):
+                checks.append({
+                    "col": name,
+                    "category": "Freshness",
+                    "name": f"{name} should be recent",
+                    "syntax": f"freshness({name}) < 1d",
+                    "body": None,
+                    "source": "default",
+                })
+
+        # ID → uniqueness (extra safety)
+        if "id" in name_lower and not col["is_pk"]:
+            if not any(
+                c["syntax"] == f"duplicate_count({name}) = 0"
+                for c in checks
+            ):
+                checks.append({
+                    "col": name,
+                    "category": "Uniqueness",
+                    "name": f"{name} should be unique",
+                    "syntax": f"duplicate_count({name}) = 0",
+                    "body": None,
+                    "source": "default",
+                })
     # ─────────────────────────────────────────────────────────────────
     # RULE 7 — Accuracy (Descriptive Text)
     # ─────────────────────────────────────────────────────────────────

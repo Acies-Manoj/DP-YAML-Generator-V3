@@ -188,10 +188,31 @@ Use "warn" for:
 QUALITY REQUIREMENTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Prefer checks using missing_count, duplicate_count, invalid_count, avg_length, and row_count.
+• For missing_percent checks: NEVER use % symbol. Always use a plain number. 
+  Example: missing_percent(col) < 5   (NOT missing_percent(col) < 5%)
+• For freshness checks: use short durations like 1d, 7d, 24h. Never use 730d or 2y.
+• Never mix metric syntax (= 0) with validity rules inline in the syntax string.
+  Validity rules (valid min, valid max, valid values, valid regex) always go in the body field.
+• For invalid_count checks with valid values: use ONLY the exact values from
+  the "Samples" field shown for that column in the prompt. NEVER invent
+  placeholder values like KNOWN_VALUE, UNKNOWN, N/A, ANY_VALUE, or similar.
+  If a column has no Samples listed, do NOT generate a valid values check for it.
 • Avoid generating complex SQL unless absolutely necessary.
 • Do not fabricate columns.
 • Do not repeat deterministic checks already generated.
 • Generate 5–12 high-value rules.
+• Only generate duplicate_count (uniqueness) checks for columns where
+  PK = True is explicitly shown in the column metadata above.
+  Do NOT generate uniqueness checks for any column where PK = False,
+  including columns with "number", "name", "address", "zip" in their name.
+  If you are unsure whether a column is a PK, do NOT generate a uniqueness check.
+• Do NOT generate valid values checks for any column that already appears
+  in ALREADY GENERATED CHECKS with an invalid_count and valid values body.
+  This applies regardless of column name casing differences.
+• Do NOT generate valid values checks for columns that already have a
+  default valid values check listed in ALREADY GENERATED CHECKS.
+  Check the ALREADY GENERATED CHECKS section carefully before generating
+  any invalid_count check with valid values.
 • Prefer cross-column validation when meaningful.
 • Infer domain meaning automatically.
 • Prioritize governance and business correctness.
@@ -293,7 +314,11 @@ def _build_default_summary(default_checks: list[dict]) -> str:
     lines = []
     for chk in default_checks:
         col_part = chk["col"] if chk.get("col") else "table-level"
-        lines.append(f"[{chk['category']}] {col_part} → {chk['syntax']}")
+        line = f"[{chk['category']}] {col_part} → {chk['syntax']}"
+        # Show valid values in summary so LLM knows not to regenerate
+        if chk.get("body") and "valid values" in chk["body"]:
+            line += " [SKIP — valid values check already exists for this column]"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -314,12 +339,30 @@ def _build_schema_context(schema_overview: dict) -> str:
 
     return "\n".join(lines)
 
+def _build_enum_hint(columns: list[dict]) -> str:
+    lines = ["ENUM COLUMNS — use ONLY these exact values in any valid values check:"]
+    found = False
+    for col in columns:
+        samples = col.get("sample_values")
+        if samples and col.get("is_likely_enum"):
+            clean = [str(v) for v in samples if v is not None]
+            if clean:
+                lines.append(f"  {col['name']}: {clean}")
+                found = True
+    if not found:
+        lines.append("  (none detected — do not generate valid values checks)")
+    return "\n".join(lines)
 
 def build_prompt(ctx: dict, default_checks: list[dict]) -> str:
+    MAX_LIBRARY_CHARS = 3000
+    library_snippet = QC_REFERENCE_LIBRARY[:MAX_LIBRARY_CHARS]
+    if len(QC_REFERENCE_LIBRARY) > MAX_LIBRARY_CHARS:
+        library_snippet += "\n... (truncated for token budget)"
+
     return f"""
 REFERENCE QUALITY CHECK PATTERNS (REAL PRODUCTION EXAMPLES):
 
-{QC_REFERENCE_LIBRARY}
+{library_snippet}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -344,9 +387,11 @@ FULL SCHEMA OVERVIEW:
 ALREADY GENERATED CHECKS:
 {_build_default_summary(default_checks)}
 
+ENUM COLUMNS WITH REAL VALUES (use ONLY these — never invent):
+{_build_enum_hint(ctx['columns'])}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INTELLIGENT REASONING INSTRUCTIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Infer business logic from semantic metadata.
 
@@ -372,20 +417,111 @@ Do NOT generate checks for other tables.
 
 Generate additional advanced checks now.
 """
+
+def strengthen_check(s: dict) -> dict | None:
+    syntax = s.get("syntax", "")
+    col = s.get("col")
+
+    if not col or not syntax:
+        return s
+    
+    min_len = 3
+
+    col_lower = col.lower()
+
+    if "email" in col_lower:
+        min_len = 5
+    elif "name" in col_lower:
+        min_len = 3
+    elif "code" in col_lower:
+        min_len = 2
+
+    # 🔴 Convert avg_length → regex validity (more reliable than valid min length)
+    if syntax.startswith("avg_length"):
+        return {
+            "col": col,
+            "category": "Validity",
+            "name": f"{col} should have meaningful values",
+            "syntax": f"invalid_count({col}) = 0",
+            "body": {
+                "valid regex": f"^[A-Za-z0-9 ]{{{min_len},}}$"
+            },
+            "severity": "warn",
+            "source": "auto_fix",
+            "reason": "Enforcing regex-based minimum length for meaningful values"
+        }
+    
+    # 🔴 Ensure invalid_count syntax is always = 0 when body has validity rules
+    body_check = s.get("body") or {}
+    if body_check and any(k in body_check for k in ["valid min", "valid max", "valid min length", "valid max length", "valid regex", "valid values"]):
+        if "invalid_count" in syntax and "= 0" not in syntax:
+            s["syntax"] = f"invalid_count({col}) = 0"
+            syntax = s["syntax"]
+
+    # 🔴 Fix regex without anchors
+    if "valid regex" in str(s.get("body", {})):
+        body = s.get("body", {})
+        regex = body.get("valid regex")
+
+        if regex:
+            if not regex.startswith("^"):
+                regex = "^" + regex
+            if not regex.endswith("$"):
+                regex = regex + "$"
+
+            body["valid regex"] = regex
+
+        s["body"] = body
+        return s
+
+    # 🔴 Remove empty valid values
+    if "valid values" in (s.get("body") or {}):
+        vals = s["body"].get("valid values")
+        if not vals:
+            return {
+                "col": col,
+                "category": "Completeness",
+                "name": f"{col} should not be null",
+                "syntax": f"missing_count({col}) = 0",
+                "body": None,
+                "severity": "fail",
+                "source": "auto_fix",
+                "reason": "Removed invalid empty value check; enforcing non-null instead"
+            }
+
+    return s
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN CALL
 # ─────────────────────────────────────────────────────────────────────────────
 
+_FAKE_VALUES = {
+    "known_value", "unknown", "n/a", "na", "any_value",
+    "placeholder", "example_value", "value1", "value2",
+    "your_value", "sample_value", "none", "null", "tbd"
+}
+
 def call_llm(ctx: dict, default_checks: list[dict]) -> list[dict]:
+
     prompt = build_prompt(ctx, default_checks)
 
     # Get LLM suggestions
-    if PROVIDER == "groq":
-        suggestions = _call_groq(prompt)
-    else:
-        suggestions = _call_ollama(prompt)
+    try:
+        if PROVIDER == "groq":
+            suggestions = _call_groq(prompt)
+        else:
+            suggestions = _call_ollama(prompt)
+    except RuntimeError:
+        raise  # pass rate limit errors up to the UI
+    except Exception as e:
+        print(f"⚠️ LLM call failed: {e}")
+        suggestions = []
+
     if suggestions is None:
         suggestions = []
+
+    print(f"🔍 LLM raw suggestions count: {len(suggestions)}")  # ← ADD THIS
+    for s in suggestions:
+        print(f"   RAW: [{s.get('col')}] {s.get('syntax','')[:60]}")  # ← ADD THIS
     
     
 
@@ -434,7 +570,7 @@ def call_llm(ctx: dict, default_checks: list[dict]) -> list[dict]:
                     "name": f"{col_name} should contain valid phone numbers",
                     "syntax": f"invalid_count({col_name}) = 0",
                     "body": {
-                        "valid regex": "^[6-9][0-9]{9}$"
+                        "valid regex": "^\\+?[0-9]{10,15}$"
                     },
                     "severity": "fail",
                     "source": "rule", 
@@ -464,93 +600,241 @@ def call_llm(ctx: dict, default_checks: list[dict]) -> list[dict]:
                 })
 
     VALID_PREFIXES = [
-    "missing_count",
-    "duplicate_count",
-    "invalid_count",
-    "avg_length",
-    "row_count",
-    "freshness",
-    "schema",
-    "failed rows"
+        "missing_count",
+        "duplicate_count",
+        "invalid_count",
+        "avg_length",
+        "row_count",
+        "freshness",
+        "schema",
+        "failed rows"
     ]
     default_syntax = {d["syntax"] for d in default_checks if d.get("syntax")}
 
     cleaned = []
+    seen_syntax = set()
 
     for s in suggestions:
+        s = strengthen_check(s)
+
+        if not s or not isinstance(s, dict):
+            continue
 
         syntax = s.get("syntax", "")
         if not syntax:
             continue
 
-        # remove unsupported constructs
+        syntax_text = syntax.lower()
+        # normalise body keys — LLM sometimes uses valid_values instead of valid values
+        body = s.get("body") or {}
+        if "valid_values" in body:
+            body["valid values"] = body.pop("valid_values")
+            s["body"] = body
+        if "valid_min" in body:
+            body["valid min"] = body.pop("valid_min")
+            s["body"] = body
+        if "valid_max" in body:
+            body["valid max"] = body.pop("valid_max")
+            s["body"] = body
+        body_text = str(body).lower()
+
+        # FIX 1: fake values detection (strong)
+        if (
+            "valid values" in syntax_text
+            or "valid values" in body_text
+            or "must be one of" in syntax_text
+        ):
+            if any(x in syntax_text for x in _FAKE_VALUES):
+                continue
+
+        # FIX 2: body fake values
+        if "valid values" in body_text:
+            vals = body.get("valid values")
+            if not vals:
+                continue
+            if any(str(v).lower().strip() in _FAKE_VALUES for v in vals):
+                continue
+
+        # remove unsupported syntax
         if any(x in syntax for x in ["concat(", "length(", "regex_match"]):
             continue
 
-        # remove duplicates vs default checks
-        if syntax in default_syntax:
+        # remove corrupted syntax — LLM put conditions inline instead of in body
+        if re.search(r'=\s*0\s+(and|or|\[)', syntax):
             continue
 
-        # keep only allowed SodaCL checks
+        # remove missing_percent with % symbol — DataOS parser rejects it
+        if re.search(r'missing_percent\([^)]+\)\s*[<>]=?\s*\d+%', syntax):
+            # fix it by removing the % sign
+            syntax = re.sub(r'(\d+)%', r'\1', syntax)
+            s["syntax"] = syntax
+
+        # fix freshness using years — convert to days
+        if re.search(r'freshness\([^)]+\)\s*[<>]\s*\d+y', syntax):
+            syntax = re.sub(r'(\d+)y', lambda m: str(int(m.group(1)) * 365) + 'd', syntax)
+            s["syntax"] = syntax
+
+        # cap freshness at 30d maximum
+        if syntax.startswith("freshness"):
+            match = re.search(r'(\d+)d', syntax)
+            if match and int(match.group(1)) > 30:
+                syntax = re.sub(r'\d+d', '1d', syntax)
+                s["syntax"] = syntax
+
+        # remove SQL expressions inside invalid_count() parentheses
+        if re.search(r'invalid_count\([^)]*(<|>|!=|=|<=|>=)[^)]*\)', syntax):
+            continue
+
+        # remove duplicates vs default
+        if syntax in default_syntax:
+            continue
+        if syntax.lower() in {d.lower() for d in default_syntax}:
+            continue
+
+        col_lower = (s.get("col") or "").lower()
+
+        # FIX 3: block any Validity check for cols already covered by default
+        if col_lower and any(
+            (d.get("col") or "").lower() == col_lower
+            and d.get("category") == "Validity"
+            for d in default_checks
+        ):
+            continue
+
+        # block uniqueness for non-PK
+        if syntax.startswith("duplicate_count"):
+            col_is_pk = any(
+                c.get("is_pk") and (c.get("name") or "").lower() == col_lower
+                for c in ctx["columns"]
+            )
+            if not col_is_pk:
+                continue
+
+        # block freshness duplicates
+        if syntax.startswith("freshness"):
+            if any(
+                d.get("category") == "Freshness"
+                and (d.get("col") or "").lower() == col_lower
+                for d in default_checks
+            ):
+                continue
+
+        # FIX 4: stronger duplicate detection
+        normalized = syntax.lower().replace(" ", "")
+        if normalized in seen_syntax:
+            continue
+        seen_syntax.add(normalized)
+
+        # allow valid SodaCL
         if any(syntax.startswith(p) for p in VALID_PREFIXES):
+            s["confidence"] = "high" if s.get("source") in ["rule", "auto_fix"] else "medium"
             cleaned.append(s)
 
     return cleaned
 
+
+def fix_escapes(json_text: str) -> str:
+    result = []
+    i = 0
+    while i < len(json_text):
+        if json_text[i] == '\\' and i + 1 < len(json_text):
+            next_char = json_text[i + 1]
+            if next_char in ('"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'):
+                result.append(json_text[i])
+                result.append(next_char)
+                i += 2
+            else:
+                result.append('\\\\')
+                i += 1
+        else:
+            result.append(json_text[i])
+            i += 1
+    return ''.join(result)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RESPONSE PARSER
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_response(raw: str) -> list[dict]:
+    if not raw or not raw.strip():
+        print("⚠️ Empty LLM response")
+        return []
+
     text = raw.strip()
+    print(f"📥 Raw LLM response (first 300 chars): {text[:300]}")  # ← ADD THIS
+
+    # remove markdown
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
 
-    match = re.search(r"\[.*\]", text, re.DOTALL)
-    if match:
-        text = match.group(0)
+    def extract_json_array(text: str) -> str:
+        start = text.find("[")
+        end = text.rfind("]")
 
-    data = json.loads(text)
+        if start != -1 and end != -1 and end > start:
+            return text[start:end + 1]
 
-    # Fix regex_match syntax produced by LLM
+        return text
+
+    # fix escapes
+    text = fix_escapes(text)
+
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        print("⚠️ JSON parse failed:", e)
+        print("RAW RESPONSE:", text[:500])
+        return []
+
+    # Handle json_object wrapper: {"checks": [...]} or {"rules": [...]} etc.
+    if isinstance(data, dict):
+        for key in ("checks", "rules", "suggestions", "results", "items"):
+            if key in data and isinstance(data[key], list):
+                data = data[key]
+                break
+        else:
+            # Try any list value in the dict
+            for v in data.values():
+                if isinstance(v, list):
+                    data = v
+                    break
+            else:
+                print("⚠️ json_object response had no list value")
+                return []
+
+    if not isinstance(data, list):
+        print("⚠️ Parsed JSON is not a list")
+        return []
+
+    # 🔧 CLEANUP LOGIC
     for item in data:
         syntax = item.get("syntax", "")
 
-        # convert regex_match() → invalid_count regex
+        # convert regex_match → SodaCL format
         if "regex_match" in syntax:
             col = item.get("col")
-
             pattern = re.findall(r"'(.*?)'", syntax)
 
             if col and pattern:
-                item["syntax"] = f"invalid_count({col}) = 0"
                 regex = pattern[0]
 
-                # add anchors if missing
                 if not regex.startswith("^"):
                     regex = "^" + regex
-
                 if not regex.endswith("$"):
-                    regex = regex + "$"
+                    regex += "$"
 
+                item["syntax"] = f"invalid_count({col}) = 0"
                 item["body"] = {"valid regex": regex}
 
-        # remove concat() based checks (not SodaCL)
-        if "concat(" in syntax:
-            item["syntax"] = ""
+        # remove unsupported syntax
+        if any(x in syntax for x in ["concat(", "length(", "custom_sql"]):
+            continue
 
-        # remove unsupported length() checks
-        if "length(" in syntax:
-            item["syntax"] = ""
-
-    for item in data:
         item["source"] = "llm"
         if "body" not in item:
             item["body"] = None
 
     return data
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GROQ
@@ -561,20 +845,38 @@ def _call_groq(prompt: str) -> list[dict]:
 
     client = Groq(api_key=GROQ_API_KEY)
 
-    response = client.chat.completions.create(
-        model=GROQ_DEFAULT_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.1,
-        max_tokens=4000,
+    fallback = "llama-3.1-8b-instant"
+    models_to_try = [GROQ_DEFAULT_MODEL]
+    if GROQ_DEFAULT_MODEL != fallback:
+        models_to_try.append(fallback)
+
+    last_err = None
+    for model in models_to_try:
+        try:
+            print(f"🤖 Trying model: {model}")
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.1,
+                max_tokens=2000,
+                response_format={"type": "json_object"},
+            )
+            return _parse_response(response.choices[0].message.content)
+
+        except Exception as e:
+            err_str = str(e)
+            if "rate_limit_exceeded" in err_str or "429" in err_str:
+                print(f"⚠️ {model} rate limited, trying next...")
+                last_err = err_str
+                continue
+            raise
+
+    raise RuntimeError(
+        f"⏳ All Groq models rate limited. Try again later or upgrade to Dev Tier.\n\nDetails: {last_err[:300]}"
     )
-
-    raw = response.choices[0].message.content
-    return _parse_response(raw)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # OLLAMA
 # ─────────────────────────────────────────────────────────────────────────────
